@@ -304,9 +304,11 @@ wire       video_rotated;
 // fetch, decrypted ROM -- but with nothing else drawn, so "sprites missing"
 // and "sprites hidden behind a tilemap" cannot be confused for each other.
 wire [1:0] test_mode      = status[7:6];
-wire       show_checks    = (test_mode == 2'd0);
-wire       show_sprtest   = (test_mode == 2'd1);
-wire       show_spronly   = (test_mode == 2'd2);
+// Index 0 is OFF (play the game); the diagnostics follow. Keep this in step
+// with the CONF_STR "Self test" line above -- they are positional.
+wire       show_checks    = (test_mode == 2'd1);
+wire       show_sprtest   = (test_mode == 2'd2);
+wire       show_spronly   = (test_mode == 2'd3);
 // Only the raster-order pages bypass rotation; mode 2 is real game video.
 wire       selftest_show  = show_checks | show_sprtest;
 wire       eff_no_rotate  = no_rotate | selftest_show;
@@ -330,7 +332,10 @@ localparam CONF_STR = {
     // second menu item over bits another one already claims.
     "O[3:2],Rotate,CCW (TATE),CW,None;",
     "O[5:4],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
-    "O[7:6],Self test,Checks,Sprite test,Sprites only,Off;",
+    // "Off" MUST stay first. MiSTer's status word powers up at 0, so index 0
+    // is what a user gets on a fresh core load -- and with "Checks" first the
+    // core booted into the diagnostic page instead of the game.
+    "O[7:6],Self test,Off,Checks,Sprite test,Sprites only;",
     "-;",
     "DIP;",
     "-;",
@@ -1356,10 +1361,16 @@ always @(posedge clk_sys) begin
         end else if (line_start && spr_busy && !(&spr_drop_acc)) begin
             spr_drop_acc <= spr_drop_acc + 16'd1;
         end
+        // Restart the run at every line_start, not only on the busy edge.
+        // sei252 now truncates an over-budget line and goes straight back to
+        // S_CLR without passing through S_IDLE, so `busy` can stay high across
+        // several lines -- and this counter then reported their SUM as one
+        // fill. A startup capture read 40,522 that way, which is not a fill
+        // time at all. Per-line is what the 4,096 budget is measured against.
         spr_busy_d <= spr_busy;
-        if (spr_busy && !spr_busy_d)       spr_fill_run <= 16'd1;
+        if (line_start)                    spr_fill_run <= spr_busy ? 16'd1 : 16'd0;
         else if (spr_busy)                 spr_fill_run <= spr_fill_run + 16'd1;
-        else if (!spr_busy && spr_busy_d)
+        if (!spr_busy && spr_busy_d)
             if (spr_fill_run > spr_fill_max) spr_fill_max <= spr_fill_run;
     end
 end
@@ -1374,10 +1385,12 @@ always @(posedge clk_sys) begin
     if (reset) begin
         tm_fill_run <= 16'd0; tm_fill_max <= 16'd0; tm_busy_d <= 1'b0;
     end else begin
+        // Same per-line restart as the sprite counter above, and for the same
+        // reason: a run measured across line boundaries is not a fill time.
         tm_busy_d <= tm_busy;
-        if (tm_busy && !tm_busy_d)      tm_fill_run <= 16'd1;   // fill started
+        if (line_start)                 tm_fill_run <= tm_busy ? 16'd1 : 16'd0;
         else if (tm_busy)               tm_fill_run <= tm_fill_run + 16'd1;
-        else if (!tm_busy && tm_busy_d) begin                   // fill ended
+        if (!tm_busy && tm_busy_d) begin                        // fill ended
             if (tm_fill_run > tm_fill_max) tm_fill_max <= tm_fill_run;
         end
     end

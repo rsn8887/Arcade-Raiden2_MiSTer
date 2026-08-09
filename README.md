@@ -78,6 +78,9 @@ chips, sound chips and so on — and shows the results on screen. It also sends
 them over the debug serial port, which is how the core is tested without
 anyone watching a monitor.
 
+It is **off by default**; turn it on from the MiSTer menu under **Self test**,
+which also offers two sprite-only display modes used for debugging graphics.
+
 This exists because a black screen tells you nothing about *why* it is black.
 The self test has found several real faults that simulation missed.
 
