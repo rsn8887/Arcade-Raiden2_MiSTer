@@ -60,3 +60,12 @@ snap/
 *.vcd
 *.fst
 obj_dir/
+
+# Project notes are kept in the development tree, not shipped. The README is
+# the single document for this repository.
+#
+# rtl/sound/jt51/README.md is NOT ignored: it is the vendored JT51 core's own
+# readme and carries its attribution, which a GPL component must keep.
+docs/
+/*.md
+!/README.md
