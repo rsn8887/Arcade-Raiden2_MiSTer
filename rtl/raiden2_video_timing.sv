@@ -30,10 +30,22 @@ module raiden2_video_timing #(
     parameter int H_VIS    = 320,
     parameter int V_TOTAL  = 282,
     parameter int V_VIS    = 240,
-    parameter int HS_START = 336,
-    parameter int HS_END   = 384,
-    parameter int VS_START = 250,
-    parameter int VS_END    = 253,
+    // Sync POSITION centres the picture; MAME's set_raw only fixes the totals
+    // and the active area, so these were ours to choose and were not centred.
+    //
+    // A monitor begins its sweep at the sync pulse, so the BACK porch (sync end
+    // to the next active pixel) decides how far right/down the image sits. The
+    // old values gave a 16-pixel front porch against a 128-pixel back porch,
+    // which started active video 28% into the horizontal sweep and left a black
+    // band down the LEFT of the screen. Vertically 10 against 29 did the same
+    // thing, seating the picture high.
+    //
+    // Splitting the blanking evenly either side of the sync pulse centres both
+    // axes: H (512-320-48)/2 = 72, V (282-240-3)/2 = 19.
+    parameter int HS_START = 392,   // 320 + 72 front porch
+    parameter int HS_END   = 440,   // 48-pixel sync, leaving 72 back porch
+    parameter int VS_START = 259,   // 240 + 19 front porch
+    parameter int VS_END    = 262,  // 3-line sync, leaving 20 back porch
     parameter int CLK_DIV  = 8        // clk_sys 64 MHz -> 8 MHz pixel clock
 ) (
     input  logic       clk,
