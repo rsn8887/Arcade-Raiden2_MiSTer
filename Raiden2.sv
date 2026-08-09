@@ -350,7 +350,7 @@ localparam CONF_STR = {
     // ever drives, so no coin could be inserted and no game could be started
     // while Fire/Bomb (bits 4/5) worked perfectly -- i.e. "no input does
     // anything". Keep this list and the MRA in step.
-    "J1,Fire,Bomb,-,-,-,-,Start,Coin,Service,Pause;",
+    "J1,Fire,Bomb,Button 3,-,-,-,Start,Coin,Service,Pause;",
     "V,v",`BUILD_DATE
 };
 
@@ -382,7 +382,13 @@ reg          rom_wr_pending;
 // Latched once at download and held; it gates the banking, the CRTC
 // register swap and the SDRAM layout, all of which differ between the two.
 reg [7:0] game_mod = 8'd0;
-always @(posedge clk_sys) if (ioctl_wr && ioctl_index == 8'd1) game_mod <= ioctl_dout[7:0];
+always @(posedge clk_sys) begin
+    // Cleared whenever a new ROM load STARTS, so switching from Raiden DX back
+    // to Raiden II without a power cycle cannot leave the DX select latched.
+    // The MRA lists index 1 after index 0, so the clear always precedes it.
+    if (ioctl_wr && ioctl_index == 8'd0 && ioctl_addr == 0) game_mod <= 8'd0;
+    else if (ioctl_wr && ioctl_index == 8'd1)               game_mod <= ioctl_dout[7:0];
+end
 wire      game_dx = game_mod[0];
 wire [3:0] dx_prg_bank;   // 0x470 top nibble, DX program bank
 
@@ -1136,9 +1142,12 @@ wire [15:0] j1 = joystick_1[15:0];
 // Those two gap bits are not optional padding -- leaving them out made the
 // concatenation 18 bits wide, and truncating it to 16 shifted every player 2
 // input down by two positions while player 1 looked perfectly fine.
+// Bits 14 and 6 are BUTTON3, which only Raiden DX has (INPUT_PORTS_START
+// raidendx adds PORT_BIT 0x4000 / 0x0040). Raiden II never reads them, so
+// wiring them unconditionally is harmless and saves a second input path.
 wire [15:0] p1p2_in = ~{
-    2'd0,                                                             // 15:14
-    joystick_1[5:4],                                                  // 13:12
+    1'd0, j1[6],                                                      // 15:14
+    j1[5:4],                                                          // 13:12
     joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3],       // 11:8
     2'd0,                                                             //  7:6
     j0[5:4],                                                          //  5:4
