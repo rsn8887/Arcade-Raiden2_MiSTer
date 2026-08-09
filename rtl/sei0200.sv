@@ -170,7 +170,8 @@ module sei0200 #(
     // ------------------------------------------------------------------
     typedef enum logic [3:0] {
         IDLE, CLR, LAYER_INIT, MAP_RD, MAP_W1, MAP_W2,
-        ROM_RD, ROM_WAIT, ROM_WAIT2, EMIT, NEXT_COL, NEXT_LAYER
+        ROM_RD, ROM_WAIT, ROM_WAIT2, EMIT, NEXT_COL, NEXT_LAYER,
+        COL_GO
     } state_t;
     state_t state;
 
@@ -188,6 +189,26 @@ module sei0200 #(
     logic        req_en;               // request held until its data arrives
     logic [31:0] word2;                // prefetched right half
     logic        word2_rdy;
+
+    // ---- cross-column prefetch ----------------------------------------
+    // The right half is fetched under the LEFT half's 8 pixels, but nothing
+    // is fetched under the RIGHT half's 8 pixels, so the next column's left
+    // half paid its full latency. Measured: 167 fetches per line with only
+    // ~2.6 clocks of each hidden, and the worst line running 1947 + 167*L.
+    //
+    // The next column's map entry is already in hand by then (next_ok), and
+    // the bus is free because the right half has landed, so the request can
+    // go out 8 pixels early.
+    //
+    // pf_addr is REGISTERED, unlike the ordinary rom_addr path. ch1 samples
+    // its address when the SDRAM arbiter gets round to the channel, NOT when
+    // the request is raised (sdram.sv reads ch1_addr in STATE_IDLE), so the
+    // address must hold still until it is served. `code` and `next_code` both
+    // move on while this request is in flight, hence the latch.
+    logic [22:0] pf_addr;
+    logic        req_next;             // the in-flight request is the next column's
+    logic [31:0] word3;                // prefetched next-column left half
+    logic        word3_rdy;
     logic [9:0]  screen_x;            // wraps; out-of-range writes are dropped
     logic [8:0]  clr_x;
 
@@ -221,9 +242,14 @@ module sei0200 #(
         endcase
     end
 
+    // Address of the NEXT column's left half, for the cross-column prefetch.
+    // req_half is 0 there by definition, so that term drops out.
+    wire [22:0] next_row_addr = {1'b0, next_code, 7'd0} + {17'd0, row_in_tile, 2'd0};
+
     always_comb begin
         // 32 bytes per 8x8 char, 128 bytes per 16x16 tile.
-        if (is_txt) rom_addr = {6'd0, code[11:0], 5'd0} + {18'd0, row_in_tile[2:0], 2'd0};
+        if (req_next) rom_addr = pf_addr;   // registered; ch1 samples at serve time
+        else if (is_txt) rom_addr = {6'd0, code[11:0], 5'd0} + {18'd0, row_in_tile[2:0], 2'd0};
         else        rom_addr = {1'b0, code, 7'd0} + {16'd0, req_half, 6'd0}
                              + {17'd0, row_in_tile, 2'd0};
     end
@@ -237,6 +263,8 @@ module sei0200 #(
             req_en    <= 1'b0;
             req_half  <= 1'b0;
             word2_rdy <= 1'b0;
+            word3_rdy <= 1'b0;
+            req_next  <= 1'b0;
             map_pre   <= 1'b0;
             next_ok   <= 1'b0;
         end else begin
@@ -294,6 +322,25 @@ module sei0200 #(
                 end
 
                 ROM_RD: state <= ROM_WAIT;      // retained; no longer entered
+
+                // Take the cross-column prefetch. One clock, which also lets
+                // the code/colour written by NEXT_COL settle before EMIT reads
+                // cram_index -- going straight to EMIT would colour pixel 0
+                // with the PREVIOUS column's palette.
+                COL_GO: begin
+                    if (word3_rdy) begin
+                        word      <= word3;
+                        word3_rdy <= 1'b0;
+                        pix       <= 4'd0;
+                        state     <= EMIT;
+                    end else if (req_en && req_next && rom_valid) begin
+                        word     <= rom_data;
+                        req_en   <= 1'b0;
+                        req_next <= 1'b0;
+                        pix      <= 4'd0;
+                        state    <= EMIT;
+                    end
+                end
 
                 ROM_WAIT: if (rom_valid) begin
                     word   <= rom_data;
@@ -366,6 +413,27 @@ module sei0200 #(
                         end
                     end
 
+                    // ---- prefetch the NEXT COLUMN under the right half -----
+                    // Guarded on next_ok (its map entry is known) and on this
+                    // not being the last column of the layer, so a request can
+                    // never outlive the column run and be consumed by the next
+                    // layer as if it were its own.
+                    if (!is_txt && half && next_ok && !word3_rdy
+                        && (col != ncols - 7'd1)) begin
+                        if (req_en && req_next) begin
+                            if (rom_valid) begin
+                                word3     <= rom_data;
+                                word3_rdy <= 1'b1;
+                                req_en    <= 1'b0;
+                                req_next  <= 1'b0;
+                            end
+                        end else if (!req_en) begin
+                            pf_addr  <= next_row_addr;   // latch: ch1 samples late
+                            req_next <= 1'b1;
+                            req_en   <= 1'b1;
+                        end
+                    end
+
                     if (pix == 4'd7) begin
                         if (!is_txt && !half) begin
                             half <= 1'b1;
@@ -398,11 +466,17 @@ module sei0200 #(
                             screen_x  <= (is_txt ? {3'd0, (col + 7'd1)} << 3
                                                  : {3'd0, (col + 7'd1)} << 4)
                                          - {6'd0, sub_x};
-                            req_half  <= 1'b0;
-                            req_en    <= 1'b1;
                             word2_rdy <= 1'b0;
                             next_ok   <= 1'b0;
-                            state     <= ROM_WAIT;
+                            if (word3_rdy || req_next) begin
+                                // Already fetched (or in flight) under the
+                                // right half -- do NOT raise a second request.
+                                state <= COL_GO;
+                            end else begin
+                                req_half <= 1'b0;
+                                req_en   <= 1'b1;
+                                state    <= ROM_WAIT;
+                            end
                         end else begin
                             state <= MAP_RD;
                         end
