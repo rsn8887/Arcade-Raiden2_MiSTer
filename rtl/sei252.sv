@@ -165,7 +165,7 @@ module sei252 #(
 
     typedef enum logic [3:0] {
         SC_IDLE, SC_E0, SC_E0W, SC_E1, SC_E1W, SC_E2, SC_E2W, SC_E3, SC_E3W,
-        SC_COL0, SC_EVAL, SC_HOLD, SC_DONE
+        SC_COL0, SC_HOLD, SC_DONE
     } scan_t;
     scan_t sc;
 
@@ -174,7 +174,7 @@ module sei252 #(
     logic  [2:0] fetch_ax;   // column the OUTSTANDING request is for (may be ax+1)
 
     // Candidate being read by the scanner, before the row test.
-    logic [15:0] c_w0, c_w1, c_w2;
+    logic [15:0] c_w0, c_w1;
     logic signed [10:0] c_ey;
 
     // The one-entry queue: a row-hit sprite the scanner has found and the
@@ -264,17 +264,38 @@ module sei252 #(
                 SC_IDLE: ;   // waiting for the next line start, handled above
 
                 SC_E0:  begin word_sel <= 2'd1; sc <= SC_E0W; end
-                SC_E0W: sc <= SC_E1;
+
+                // Priming cycle. The address {idx,1} is presented now and its
+                // data lands next cycle, so idx starts running one step AHEAD
+                // of the entry being examined. From here on:
+                //
+                //     spr_data in SC_E1  ==  word1 of entry (idx + 1)
+                //
+                // That one-ahead skew is what makes an empty slot cost ONE
+                // clock instead of two: previously the loop went back through
+                // SC_E0W every slot purely to absorb the sprite RAM's 1-cycle
+                // latency. Get the +1 wrong and the scanner reads one entry's
+                // tile code with another entry's attributes.
+                SC_E0W: begin
+                    idx <= idx - 9'd1;
+                    sc  <= SC_E1;
+                end
+
                 SC_E1: begin
-                    if (spr_data == 16'd0) begin
-                        // empty slot: straight to the next entry, address
-                        // already pointing at its word 1
-                        if (idx == 9'd0) sc <= SC_DONE;
-                        else begin idx <= idx - 9'd1; sc <= SC_E0W; end
-                    end else begin
+                    if (spr_data != 16'd0) begin
+                        // Non-empty: the code belongs to idx+1, so wind idx
+                        // back onto that entry before reading its other words.
+                        idx      <= idx + 9'd1;
                         c_w1     <= spr_data;
                         word_sel <= 2'd0;
                         sc       <= SC_E1W;
+                    end else if (idx == 9'd511) begin
+                        // idx wrapped past 0, so the entry just examined WAS
+                        // entry 0 -- the list is finished.
+                        sc <= SC_DONE;
+                    end else begin
+                        // Empty slot: keep the pipeline running, one per clock.
+                        idx <= idx - 9'd1;
                     end
                 end
                 SC_E1W: sc <= SC_E2;
@@ -286,17 +307,14 @@ module sei252 #(
                     word_sel <= 2'd2;
                     sc       <= SC_E3W;
                 end
-                SC_E3W: sc <= SC_COL0;
-                SC_COL0: begin c_w2 <= spr_data; sc <= SC_EVAL; end
-
-                SC_EVAL: begin
+                // The row test needs only sizey (from c_w0) and y (from c_ey),
+                // both of which are already latched here -- so decide BEFORE
+                // paying two clocks to read the x word. Most live sprites are
+                // not on any given line (130 live, ~24 on the worst line), so
+                // this skips the read for the ~106 that miss.
+                SC_E3W: begin
                     if (c_row_hit) begin
-                        p_w0    <= c_w0;
-                        p_w1    <= c_w1;
-                        p_w2    <= c_w2;
-                        p_ey    <= c_ey;
-                        p_valid <= 1'b1;
-                        sc      <= SC_HOLD;
+                        sc <= SC_COL0;
                     end else if (idx == 9'd0) begin
                         sc <= SC_DONE;
                     end else begin
@@ -304,6 +322,17 @@ module sei252 #(
                         word_sel <= 2'd1;
                         sc       <= SC_E0W;
                     end
+                end
+
+                // Row already known to hit, so queue straight from spr_data
+                // rather than latching x and spending another state on it.
+                SC_COL0: begin
+                    p_w0    <= c_w0;
+                    p_w1    <= c_w1;
+                    p_w2    <= spr_data;
+                    p_ey    <= c_ey;
+                    p_valid <= 1'b1;
+                    sc      <= SC_HOLD;
                 end
 
                 // Hold the queued sprite until the plotter takes it. Holding is
