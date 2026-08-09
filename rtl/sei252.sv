@@ -159,9 +159,25 @@ module sei252 #(
     // joins them. Per sprite the cost becomes max(round trip, plot) ~= 28.
     typedef enum logic [3:0] {
         S_IDLE, S_CLR, S_WAITSPR, S_START0,
-        S_FETCH, S_FETCHW, S_PLOT, S_NEXTCOL, S_PFWAIT
+        S_FETCH, S_FETCHW, S_PLOT, S_NEXTCOL, S_PFWAIT, S_DRAIN
     } state_t;
     state_t st;
+
+    // A line_start arriving mid-fill used to be IGNORED, so an over-budget
+    // line cost the WHOLE of the next line: no fill happened at all and the
+    // raster showed the previous line's pixels. Truncating the overrunning
+    // line instead loses only its tail sprites, which is both far less
+    // visible and closer to the PCB -- real hardware bounds per-line sprite
+    // work and ours deliberately does not (see the header note).
+    //
+    // The abort cannot be immediate when a ROM request is in flight. The ch2
+    // bridge is single-outstanding and latches at request time, so an
+    // abandoned reply would be taken by the next line's S_FETCHW as if it
+    // were its own -- silently drawing one sprite's pixels with another
+    // sprite's row. S_DRAIN absorbs that one reply first. This is the same
+    // hazard that made #77 so hard to see.
+    wire rom_outstanding = pf_busy || (st == S_FETCHW);
+    logic line_restart;              // one-cycle pulse: a new line was accepted
 
     typedef enum logic [3:0] {
         SC_IDLE, SC_E0, SC_E0W, SC_E1, SC_E1W, SC_E2, SC_E2W, SC_E3, SC_E3W,
@@ -184,6 +200,16 @@ module sei252 #(
     logic signed [10:0] p_ey;
     logic        p_valid;
     logic        p_consume;  // one-cycle pulse: plotter took the queued sprite
+
+    // Second buffered sprite. With a one-deep queue the scanner sat idle in
+    // SC_HOLD while the plotter worked, then had to search from scratch after
+    // every consume -- 594 clocks per line of the plotter waiting. Banking one
+    // more entry during that idle time lets the scanner run ahead through the
+    // sparse stretches of the list; its total work (~1,682 clocks) fits inside
+    // the plotter's (~3,450) comfortably, it was only the burstiness that hurt.
+    logic [15:0] q_w0, q_w1, q_w2;
+    logic signed [10:0] q_ey;
+    logic        q_valid;
 
     // Prefetch of the next tile row needed, issued under the current column's
     // 16-cycle plot. Only ONE request is ever outstanding, which is all the
@@ -238,12 +264,37 @@ module sei252 #(
     // so every address change is followed by one wait state, and an empty slot
     // still costs two clocks because the TILE CODE is read first.
     always_ff @(posedge clk) begin
+        // ---- promote q into p ------------------------------------------
+        // Placed before the case so SC_COL0's write to q wins in the cycle the
+        // two coincide: p then takes the OLD q (correct, it is older) and q
+        // takes the new hit.
+        if (!reset && !line_restart) begin
+            if (p_consume) begin
+                if (q_valid) begin
+                    p_w0 <= q_w0; p_w1 <= q_w1; p_w2 <= q_w2; p_ey <= q_ey;
+                    q_valid <= 1'b0;
+                end else begin
+                    p_valid <= 1'b0;
+                end
+            end else if (!p_valid && q_valid) begin
+                p_w0 <= q_w0; p_w1 <= q_w1; p_w2 <= q_w2; p_ey <= q_ey;
+                p_valid <= 1'b1;
+                q_valid <= 1'b0;
+            end
+        end
+
         if (reset) begin
             sc      <= SC_IDLE;
             p_valid <= 1'b0;
-        end else if (start && st == S_IDLE) begin
-            // Line start is handled HERE, ahead of the case, so it is accepted
-            // from any scanner state -- including SC_DONE.
+            q_valid <= 1'b0;
+        end else if (line_restart) begin
+            // Driven by the plotter when it actually begins a line, rather
+            // than off `start` directly: a start that arrives mid-fill is now
+            // deferred through S_DRAIN, and the scanner must restart with the
+            // plotter, not one abort earlier.
+            //
+            // Handled HERE, ahead of the case, so it is accepted from any
+            // scanner state -- including SC_DONE.
             //
             // Gating it on SC_IDLE instead deadlocks the module: the plotter
             // reaches S_IDLE one cycle BEFORE the scanner leaves SC_DONE (the
@@ -258,6 +309,7 @@ module sei252 #(
             idx      <= 9'd511;      // back to front
             word_sel <= 2'd1;        // tile code first
             p_valid  <= 1'b0;
+            q_valid  <= 1'b0;
             sc       <= SC_E0W;
         end else begin
             case (sc)
@@ -326,20 +378,23 @@ module sei252 #(
 
                 // Row already known to hit, so queue straight from spr_data
                 // rather than latching x and spending another state on it.
+                // Every hit lands in q first; the promote block above moves it
+                // into p as soon as p is free. Writing one slot uniformly
+                // avoids racing the promote in the cycle they coincide.
                 SC_COL0: begin
-                    p_w0    <= c_w0;
-                    p_w1    <= c_w1;
-                    p_w2    <= spr_data;
-                    p_ey    <= c_ey;
-                    p_valid <= 1'b1;
+                    q_w0    <= c_w0;
+                    q_w1    <= c_w1;
+                    q_w2    <= spr_data;
+                    q_ey    <= c_ey;
+                    q_valid <= 1'b1;
                     sc      <= SC_HOLD;
                 end
 
-                // Hold the queued sprite until the plotter takes it. Holding is
-                // what keeps p_* stable for the cross-sprite prefetch address.
+                // Wait only until q has been promoted, NOT until the plotter
+                // consumes -- that is the whole point of the second slot. The
+                // scanner keeps hunting while the plotter is still drawing.
                 SC_HOLD: begin
-                    if (p_consume) begin
-                        p_valid <= 1'b0;
+                    if (!q_valid) begin
                         if (idx == 9'd0) sc <= SC_DONE;
                         else begin
                             idx      <= idx - 9'd1;
@@ -350,7 +405,6 @@ module sei252 #(
                 end
 
                 SC_DONE: begin
-                    if (p_consume) p_valid <= 1'b0;
                     if (st == S_IDLE) sc <= SC_IDLE;
                 end
 
@@ -387,6 +441,8 @@ module sei252 #(
             end
         end
 
+        line_restart <= 1'b0;
+
         if (reset) begin
             st          <= S_IDLE;
             fill_bank   <= 1'b0;
@@ -394,13 +450,39 @@ module sei252 #(
             pf_busy     <= 1'b0;
             pf_have     <= 1'b0;
             pf_for_next <= 1'b0;
+        end else if (start && st != S_IDLE && rom_outstanding) begin
+            // Overrun with a fetch in flight: absorb the reply, then restart.
+            st <= S_DRAIN;
+        end else if (start && st != S_IDLE) begin
+            // Overrun with the bus quiet: truncate and restart immediately.
+            fill_bank    <= ~fill_bank;
+            clr_x        <= 9'd0;
+            pf_have      <= 1'b0;
+            pf_for_next  <= 1'b0;
+            line_restart <= 1'b1;
+            st           <= S_CLR;
         end else begin
             case (st)
                 S_IDLE: begin
                     if (start) begin
-                        fill_bank <= ~fill_bank;
-                        clr_x     <= 9'd0;
-                        st        <= S_CLR;
+                        fill_bank    <= ~fill_bank;
+                        clr_x        <= 9'd0;
+                        line_restart <= 1'b1;
+                        st           <= S_CLR;
+                    end
+                end
+
+                // Wait out the one reply that is already in flight, discard
+                // it, then begin the new line. pf_busy is cleared by the
+                // service block above on the same rom_valid.
+                S_DRAIN: begin
+                    if (rom_valid) begin
+                        fill_bank    <= ~fill_bank;
+                        clr_x        <= 9'd0;
+                        pf_have      <= 1'b0;
+                        pf_for_next  <= 1'b0;
+                        line_restart <= 1'b1;
+                        st           <= S_CLR;
                     end
                 end
 
@@ -437,7 +519,7 @@ module sei252 #(
                         ax        <= 3'd0;
                         p_consume <= 1'b1;
                         st        <= S_START0;
-                    end else if (sc == SC_DONE) begin
+                    end else if (sc == SC_DONE && !q_valid) begin
                         st <= S_IDLE;
                     end
                 end
