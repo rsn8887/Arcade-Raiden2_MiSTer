@@ -88,6 +88,31 @@ The self test has found several real faults that simulation missed.
 
 You need **Quartus Prime 17.0** (the free Lite edition works).
 
+### Required packages
+
+Quartus ships most of its own libraries — about 960 of them — so it needs very
+little from the distribution, and the compile binaries are 64-bit, so no 32-bit
+multilib is required.
+
+```sh
+# Debian / Ubuntu
+sudo apt install libglib2.0-0 libnsl2 zlib1g libpcre2-8-0
+
+# Fedora / RHEL
+sudo dnf install glib2 libnsl zlib pcre2
+
+# Arch
+sudo pacman -S glib2 libnsl zlib pcre2
+```
+
+On a stock Ubuntu 24.04 install all of these are already present, including
+`libnsl.so.1`, which is the one people usually expect to be missing.
+
+**Use the command-line flow below rather than the Quartus GUI.** The GUI wants
+`libpng12`, which distributions dropped years ago, along with old Qt libraries.
+The command-line flow never loads either, which is why it still works on a
+current system.
+
 ```sh
 export QUARTUS_ROOTDIR=/path/to/intelFPGA_lite/17.0/quartus
 export PATH=$QUARTUS_ROOTDIR/bin:$PATH
