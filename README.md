@@ -36,10 +36,18 @@ These are the reasons the core is not finished yet:
 2. **Only Raiden II is supported.** There is one MRA. Other sets in the same
    family, such as Raiden DX, are not covered.
 
-Recently fixed and included in the current release: see-through effects
-(engine flames, water, clouds) came out blue or purple because the colour
-blend threw away its carry; and the sprite chip ran out of time on busy
-scanlines and dropped them. Dropped scanlines now measure zero on hardware.
+Recently fixed and included in the current release:
+
+- See-through effects (engine flames, water, clouds) came out blue or purple,
+  because the 50% colour blend discarded its carry and any channel pair over
+  255 wrapped to near zero.
+- Both graphics chips ran out of time on busy scanlines and dropped them.
+  Dropped scanlines now measure zero on hardware.
+- The picture sat off-centre on a CRT, with a black band down one side. The
+  sync pulses were not centred in the blanking, and a monitor positions the
+  image from the back porch. Only visible on a display fed the core's raw
+  video; the scaler re-times everything, which is why it went unnoticed.
+- Keyboard and analog stick support, which the core simply did not have.
 
 ## How to use it
 
