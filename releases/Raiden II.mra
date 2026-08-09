@@ -11,7 +11,14 @@
   <players>2</players>
   <joystick>8-way</joystick>
   <num_buttons>2</num_buttons>
-  <buttons default="A,B,Start" names="Fire,Bomb,-,-,-,-,Start,Coin"/>
+  <!-- Names are positional and must mirror the CONF_STR "J1,..." list in
+       Raiden2.sv, dashes included, or the OSD labels drift off the joystick
+       bits. Defaults map to the non-dash names in order, so this reads
+       Fire=A, Bomb=B, Start=R, Coin=L, Pause=Start.
+
+       That is the Arcade-Cave_MiSTer convention (Start on R, Coin on L,
+       Pause on Start), which previously left Coin and Pause unmapped here. -->
+  <buttons names="Fire,Bomb,-,-,-,-,Start,Coin,-,Pause" default="A,B,R,L,Start"/>
 
   <!-- DIP layout from MAME raiden2.cpp INPUT_PORTS_START(raiden2).
        All switches are active low, so the default of FF,FF is

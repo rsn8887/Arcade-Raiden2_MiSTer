@@ -56,13 +56,20 @@ lists which files it needs and checks them by CRC. You must supply your own.
 
 ## Controls
 
-| Button | Action |
+Defaults follow the same layout as
+[Arcade-Cave_MiSTer](https://github.com/MiSTer-devel/Arcade-Cave_MiSTer), so
+shmups behave the same way across cores:
+
+| Control | Action |
 |---|---|
 | D-pad / stick | Move |
 | A | Fire |
 | B | Bomb |
-| Start | Start game |
-| Coin | Insert coin |
+| R | Start |
+| L | Insert coin |
+| Start | Pause |
+
+All of these can be remapped in the MiSTer menu.
 
 ## Built-in self test
 
