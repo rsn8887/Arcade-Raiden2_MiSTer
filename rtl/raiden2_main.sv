@@ -22,7 +22,7 @@ module raiden2_main (
     input  logic        vblank,       // rising edge raises the single IRQ
 
     // Program ROM port (SDRAM on hardware, flat memory in sim)
-    output logic [19:0] rom_addr,
+    output logic [20:0] rom_addr,   // 21 bits: Raiden DX banks past 1 MB
     output logic        rom_req,
     input  logic [15:0] rom_data,
     input  logic        rom_ready,
@@ -51,6 +51,8 @@ module raiden2_main (
 
     // Decoded chip selects, so external blocks never re-decode the window.
     output logic        cop_cs,
+    input  logic        game_dx,     // 0 = Raiden II, 1 = Raiden DX
+    input  logic  [3:0] dx_prg_bank, // DX banks from 0x470 (video_regs)
     output logic        copbank_cs,
     output logic        crtc_cs,
     output logic        sprite_cs,
@@ -211,16 +213,17 @@ module raiden2_main (
     // Address decode
     //------------------------------------------------------------------
     logic ram_cs, rom_cs;
-    logic [19:0] decoded_rom_addr;
+    logic [20:0] decoded_rom_addr;   // 21 bits: DX banks past 1 MB
     logic reg_cs;
     logic prgbank_cs, copdma_cs;
     logic dsw_cs, p1p2_cs, system_cs;
 
-    logic prg_bank;
+    logic [3:0] prg_bank;
 
     raiden2_addr_decode decode (
         .addr          (addr),
-        .prg_bank      (prg_bank),
+        .prg_bank      (game_dx ? dx_prg_bank : prg_bank),
+        .game_dx       (game_dx),
         .ram_cs        (ram_cs),
         .rom_cs        (rom_cs),
         .rom_addr      (decoded_rom_addr),
@@ -253,12 +256,12 @@ module raiden2_main (
     //------------------------------------------------------------------
     always_ff @(posedge clk) begin
         if (reset) begin
-            prg_bank <= 1'b1;
+            prg_bank <= 4'b0001;
         end else if (prgbank_cs & MWR & ~cpu_n_ube) begin
             // 0x6CB is the odd byte of the 0x6CA word, so it always arrives on
             // the upper lane -- true both for a byte write to 0x6CB and for a
             // word write to 0x6CA.
-            prg_bank <= ~cpu_dout[15];
+            prg_bank <= {3'b000, ~cpu_dout[15]};
         end
     end
 

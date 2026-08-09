@@ -45,6 +45,8 @@ module raiden2_video_regs (
     input  logic        reg_rd,
     input  logic        crtc_cs,     // 0x600-0x63F
     input  logic        tilebank_cs, // 0x6CC
+    input  logic        game_dx,     // 0 = Raiden II, 1 = Raiden DX
+    output logic  [3:0] dx_prg_bank, // DX program bank, from cop_bank[15:12]
     input  logic        copbank_cs,  // 0x470-0x471
 
     // Read-back into the CPU
@@ -74,8 +76,19 @@ module raiden2_video_regs (
     endfunction
 
     logic [15:0] cop_bank;
+    // DX takes its PROGRAM bank from the top nibble of this register:
+    //   raidendx_cop_bank_2_w: m_mainbank->set_entry(m_cop_bank >> 12)
+    // Raiden II ignores it and banks from 0x6CB instead.
+    assign dx_prg_bank = cop_bank[15:12];
     logic [15:0] tilemap_enable;      // full width, like MAME's m_tilemap_enable
-    wire   [5:0] crtc_ofs = reg_addr[5:0];
+    // Raiden DX (and Sky Smasher) swap CRTC registers [0x10] and [0x20], which
+    // MAME implements as read_alt/write_alt:
+    //     read_word(bitswap<16>(offset, ...,5,3,4,2,1,0))
+    // i.e. address bits 4 and 3 exchanged. Everything else about the register
+    // file is identical, so this one swap is the whole difference.
+    wire   [5:0] crtc_raw = reg_addr[5:0];
+    wire   [5:0] crtc_ofs = game_dx ? {crtc_raw[5], crtc_raw[3], crtc_raw[4], crtc_raw[2:0]}
+                                    : crtc_raw;
 
     assign tx_bank      = 3'd0;
     assign layer_enable = tilemap_enable[4:0];
@@ -110,11 +123,24 @@ module raiden2_video_regs (
                 mid_bank <= {1'b0, reg_dout[1], 1'b1};
             end
 
-            // cop_tile_bank_2_w: the register always merges, but the FG bank
-            // only updates on ACCESSING_BITS_8_15.
+            // 0x470. The register always merges, but the FG bank is derived
+            // DIFFERENTLY per game -- this is not a cosmetic difference and
+            // getting it wrong scrambles the foreground layer:
+            //
+            //   raiden2  cop_tile_bank_2_w:     4 | (data >> 14)
+            //            from the WRITTEN data, bits [15:14], and only on
+            //            ACCESSING_BITS_8_15.
+            //   raidendx raidendx_cop_bank_2_w: 4 | ((cop_bank >> 4) & 3)
+            //            from the MERGED register, bits [5:4], every write.
+            //
+            // DX additionally banks program ROM from cop_bank[15:12]; see
+            // dx_prg_bank above.
             if (copbank_cs) begin
                 cop_bank <= combine(cop_bank, reg_dout, reg_be);
-                if (reg_be[1]) fg_bank <= {1'b1, reg_dout[15:14]};
+                if (game_dx)
+                    fg_bank <= {1'b1, combine(cop_bank, reg_dout, reg_be)[5:4]};
+                else if (reg_be[1])
+                    fg_bank <= {1'b1, reg_dout[15:14]};
             end
         end
     end

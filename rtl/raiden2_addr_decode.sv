@@ -27,12 +27,16 @@
 
 module raiden2_addr_decode (
     input  logic [19:0] addr,        // CPU physical address
-    input  logic        prg_bank,    // program bank entry (0 => ROM 0x00000, 1 => ROM 0x20000)
+    input  logic  [3:0] prg_bank,    // program bank entry
+    input  logic        game_dx,     // 0 = Raiden II, 1 = Raiden DX
 
     // Bulk regions
     output logic        ram_cs,      // 0x00000-0x1FFFF minus the register window
     output logic        rom_cs,      // 0x20000-0xFFFFF
-    output logic [19:0] rom_addr,    // ROM offset after bank translation
+    // 21 bits, not 20: Raiden DX has a 2 MB program ROM and banks the window
+    // from +0x100000, so the translated offset runs past the 1 MB the CPU can
+    // address directly.
+    output logic [20:0] rom_addr,    // ROM offset after bank translation
 
     // --- register window 0x400-0x7FF -------------------------------------
     output logic        reg_cs,      // whole window, for "unmapped register" logging
@@ -65,11 +69,23 @@ module raiden2_addr_decode (
     assign ram_cs = (addr < 20'h20000) && !in_reg_window;
     assign rom_cs = (addr >= 20'h20000);
 
-    // 0x20000-0x3FFFF is a 128K window over two banks; 0x40000+ is fixed and
-    // maps 1:1 onto the ROM image.
+    // Raiden II: 0x20000-0x3FFFF is a 128K window over TWO banks, and
+    // 0x40000+ is fixed, mapping 1:1 onto the ROM image.
+    //
+    // Raiden DX rearranges this completely (MAME raidendx_mem):
+    //     map(0x20000, 0x2ffff).bankr(m_mainbank);      64K window
+    //     map(0x30000, 0xfffff).rom().region(..0x30000) fixed from 0x30000
+    // with configure_entries(0, 0x10, base + 0x100000, 0x10000) -- SIXTEEN
+    // 64K banks living in the SECOND megabyte of a 2 MB ROM. The bank number
+    // arrives in the top nibble of the word written to 0x470, not from 0x6CB.
     always_comb begin
-        if (addr < 20'h40000) rom_addr = {2'b00, prg_bank, addr[16:0]};
-        else                  rom_addr = addr;
+        if (game_dx) begin
+            if (addr < 20'h30000) rom_addr = 21'h100000 + {5'd0, prg_bank, addr[15:0]};
+            else                  rom_addr = {1'b0, addr};
+        end else begin
+            if (addr < 20'h40000) rom_addr = {3'b000, prg_bank[0], addr[16:0]};
+            else                  rom_addr = {1'b0, addr};
+        end
     end
 
     // --- register window sub-decode --------------------------------------

@@ -376,6 +376,16 @@ reg          rom_wr_pending;
 // CPU reads them (active low -- the MRA default is FF,FF). hps_io runs in
 // WIDE mode, so both bytes arrive together in the single 16-bit word at
 // ioctl_addr 0; ioctl_addr[0] is always 0 and cannot be used to index them.
+// Game select. The MRA supplies a single byte at ioctl index 1:
+//   <rom index="1"><part>00</part></rom>  -> Raiden II
+//   <rom index="1"><part>01</part></rom>  -> Raiden DX
+// Latched once at download and held; it gates the banking, the CRTC
+// register swap and the SDRAM layout, all of which differ between the two.
+reg [7:0] game_mod = 8'd0;
+always @(posedge clk_sys) if (ioctl_wr && ioctl_index == 8'd1) game_mod <= ioctl_dout[7:0];
+wire      game_dx = game_mod[0];
+wire [3:0] dx_prg_bank;   // 0x470 top nibble, DX program bank
+
 reg [7:0] dsw_bytes[2];
 always @(posedge clk_sys) begin
     if (ioctl_wr && ioctl_index == 8'd254 && !ioctl_addr[26:1]) begin
@@ -934,18 +944,18 @@ raiden2_sdram_bist bist
 // This is the first consumer of the upper 48 bits of ch3_dout; their ordering
 // is checked every fetch by the harness's FETCH CHECK (0 mismatches in 1.2 M
 // fetches) rather than assumed.
-wire [19:0] cpu_rom_addr;
+wire [20:0] cpu_rom_addr;   // 21 bits: Raiden DX banks past 1 MB
 wire        cpu_rom_req;
 reg  [15:0] cpu_rom_data_r;
 reg         cpu_fetch_pending;
-reg  [19:0] cpu_fetch_addr;
+reg  [20:0] cpu_fetch_addr;
 
 reg [15:0] cpu_line [0:3];
-reg [16:0] cpu_line_tag;
+reg [17:0] cpu_line_tag;
 reg        cpu_line_valid;
 
-wire cpu_line_hit = cpu_line_valid && (cpu_rom_addr[19:3] == cpu_line_tag);
-wire cpu_word_hit = (cpu_rom_addr[19:1] == cpu_fetch_addr[19:1]);
+wire cpu_line_hit = cpu_line_valid && (cpu_rom_addr[20:3] == cpu_line_tag);
+wire cpu_word_hit = (cpu_rom_addr[20:1] == cpu_fetch_addr[20:1]);
 
 wire cpu_fetch_start = cpu_rom_req && !(cpu_line_hit || cpu_word_hit);
 wire cpu_rom_ready   = ~cpu_fetch_pending & ~cpu_fetch_start;
@@ -958,12 +968,12 @@ always @(posedge clk_sys) begin
 
     if (reset) begin
         cpu_fetch_pending <= 1'b0;
-        cpu_fetch_addr    <= 20'hFFFFF;
+        cpu_fetch_addr    <= 21'h1FFFFF;
         cpu_line_valid    <= 1'b0;
     end else if (!cpu_fetch_pending) begin
         if (cpu_fetch_start) begin
             cpu_fetch_addr    <= cpu_rom_addr;
-            sdr_cpu_addr      <= SDR_MAINCPU + {5'd0, cpu_rom_addr};
+            sdr_cpu_addr      <= SDR_MAINCPU + {4'd0, cpu_rom_addr};
             sdr_cpu_req       <= 1'b1;
             cpu_fetch_pending <= 1'b1;
         end
@@ -975,7 +985,7 @@ always @(posedge clk_sys) begin
         cpu_line[(cpu_fetch_addr[2:1] + 2'd1) & 2'd3] <= sdr_cpu_dout[31:16];
         cpu_line[(cpu_fetch_addr[2:1] + 2'd2) & 2'd3] <= sdr_cpu_dout[47:32];
         cpu_line[(cpu_fetch_addr[2:1] + 2'd3) & 2'd3] <= sdr_cpu_dout[63:48];
-        cpu_line_tag   <= cpu_fetch_addr[19:3];
+        cpu_line_tag   <= cpu_fetch_addr[20:3];
         cpu_line_valid <= 1'b1;
     end
 end
@@ -1265,6 +1275,8 @@ wire cpu_ce = cpu_ce_raw & ~paused;
 
 raiden2_main cpu
 (
+    .game_dx        (game_dx),
+    .dx_prg_bank    (dx_prg_bank),
     .clk(clk_sys), .reset(reset), .cpu_ce(cpu_ce),
     .vblank(vblank_rise),
 
@@ -1312,6 +1324,8 @@ wire  [4:0] layer_enable;
 
 raiden2_video_regs video_regs
 (
+    .game_dx       (game_dx),
+    .dx_prg_bank   (dx_prg_bank),
     .clk(clk_sys), .reset(reset),
 
     .reg_addr(reg_addr), .reg_dout(reg_dout), .reg_be(reg_be),
