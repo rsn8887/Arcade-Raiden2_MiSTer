@@ -1,0 +1,83 @@
+# Hand-maintained source list. Do NOT add files via the Quartus IDE.
+set_global_assignment -name SDC_FILE Raiden2.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE Raiden2.sv
+
+# Seibu-specific RTL
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_main.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_addr_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_cop_dma.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_cop_cmd.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_video_timing.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_video_regs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sei0200.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_r2crypt.sv
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80.vhd
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80_ALU.vhd
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80_MCode.vhd
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80_Reg.vhd
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80pa.vhd
+set_global_assignment -name VHDL_FILE rtl/sound/t80/T80s.vhd
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_acc.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_csr_ch.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_csr_op.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_eg.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_exp2lin.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_exprom.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_kon.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_lfo.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_lin2exp.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_mmr.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_mod.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_noise.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_noise_lfsr.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_op.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_pg.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_phinc_rom.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_phrom.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_pm.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_reg.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_sh.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt51/jt51_timers.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt12_comb.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt12_interpol.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_acc.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_adpcm.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_ctrl.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_rom.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_serial.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_sh_rst.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jt6295/jt6295_timing.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jtframe_dual_ram.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jtframe_fir_mono.v
+set_global_assignment -name VERILOG_FILE rtl/sound/jtframe_mixer.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_uart_log.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_uart_stream.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_oki_cache.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_sound.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_seibu_latch.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_sei360.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sei252.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_sprite_test_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram.sv
+
+# Core self-test page. raiden2_font8x8.sv and raiden2_selftest_page.sv are
+# GENERATED -- see tools/make_font.py and tools/make_selftest_page.py.
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_sdram_bist.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_diag.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_selftest.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_selftest_page.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_font8x8.sv
+
+# Vendored from Arcade-IremM92_MiSTer (Martin Donlon, GPL-2.0)
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/types.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/alu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/nec_divider.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/nec_decode.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/bus_control_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/nec_core/v33.sv
+set_global_assignment -name SEARCH_PATH rtl/nec_core
+
+set_global_assignment -name QIP_FILE rtl/pll.qip

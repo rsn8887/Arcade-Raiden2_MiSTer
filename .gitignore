@@ -1,0 +1,62 @@
+# Quartus build output
+db
+greybox_tmp
+incremental_db
+output_files
+simulation
+hc_output
+scaler
+hps_isw_handoff
+vip
+*_sim
+.qsys_edit
+PLLJ_PLLSPE_INFO.txt
+*.bak
+*.orig
+*.rej
+*.qdf
+*.rpt
+*.smsg
+*.summary
+*.done
+*.jdi
+*.pin
+*.sof
+*.qws
+*.ppf
+*.ddb
+build_id.v
+c5_pin_model_dump.txt
+*.sopcinfo
+*.f
+*.cmp
+*.sip
+*.spd
+*.bsf
+*~
+*_netlist
+*.cdf
+**/.DS_Store
+compile.log
+
+# Quartus timing/analysis dumps produced by this project's build scripts
+worst.txt
+hdmi_worst.txt
+cop_worst.txt
+cr_ie_info.json
+
+# ROMs -- NEVER commit. MRAs reference MAME zips by CRC only.
+*.zip
+*.rom
+roms/*
+
+# MiSTer SD-card runtime artefacts, not source: the board writes per-core
+# settings into cfg/ and screenshots into snap/. No reference core ships
+# either (checked against Arcade-IremM92, Arcade-IremM72, Arcade-Raiden).
+cfg/
+snap/
+
+# Simulation
+*.vcd
+*.fst
+obj_dir/

@@ -1,0 +1,98 @@
+//============================================================================
+//  Raiden II - video timing generator
+//
+//  From MAME src/mame/seibu/raiden2.cpp:
+//      screen.set_raw(32MHz/4, 512, 0, 320, 282, 0, 240)   // ROT270
+//
+//  Pixel clock 8 MHz, H total 512 (320 visible), V total 282 (240 visible),
+//  giving 8e6 / (512*282) = 55.42 Hz. Measured on a real PCB: VSync 55.4859 Hz,
+//  HSync 15.5586 kHz. Our H rate is 8e6/512 = 15.625 kHz, about 0.4% fast
+//  against that measurement -- MAME's raw numbers are what we model, and the
+//  discrepancy is left documented rather than fudged, since nothing here has
+//  been verified against hardware.
+//
+//  Sync positions are NOT given by set_raw. The values below are placed inside
+//  the blanking intervals and are a guess; they affect how the MiSTer scaler
+//  frames the image, not what the game renders.
+//
+//  The monitor is vertical, so sys/ needs screen_rotate for normal displays.
+//
+//  line_start pulses at the beginning of every line and asks the tilemap
+//  engine to fill the NEXT line into the opposite buffer bank. That gives the
+//  fill a full line (512 pixel-times = 4096 clocks at clk_sys/8) rather than
+//  just the 1536 clocks of hblank, which measurement shows it needs: a line
+//  fill costs ~2400 clocks with a zero-latency ROM and ~2900 at 4 clocks of
+//  ROM latency.
+//============================================================================
+
+module raiden2_video_timing #(
+    parameter int H_TOTAL  = 512,
+    parameter int H_VIS    = 320,
+    parameter int V_TOTAL  = 282,
+    parameter int V_VIS    = 240,
+    parameter int HS_START = 336,
+    parameter int HS_END   = 384,
+    parameter int VS_START = 250,
+    parameter int VS_END    = 253,
+    parameter int CLK_DIV  = 8        // clk_sys 64 MHz -> 8 MHz pixel clock
+) (
+    input  logic       clk,
+    input  logic       reset,
+
+    output logic       ce_pix,
+    output logic [9:0] hcnt,
+    output logic [8:0] vcnt,
+
+    output logic       hsync,
+    output logic       vsync,
+    output logic       hblank,
+    output logic       vblank,
+    output logic       vblank_rise,   // one clk pulse, drives the CPU's single IRQ
+
+    output logic       line_start,    // pulse: begin filling next_line
+    output logic [8:0] next_line
+);
+
+    logic [3:0] divcnt;
+
+    always_ff @(posedge clk) begin
+        ce_pix      <= 1'b0;
+        line_start  <= 1'b0;
+        vblank_rise <= 1'b0;
+
+        if (reset) begin
+            divcnt <= 4'd0;
+            hcnt   <= 10'd0;
+            vcnt   <= 9'd0;
+        end else begin
+            if (divcnt == CLK_DIV[3:0] - 4'd1) begin
+                divcnt <= 4'd0;
+                ce_pix <= 1'b1;
+
+                if (hcnt == H_TOTAL[9:0] - 10'd1) begin
+                    hcnt <= 10'd0;
+                    if (vcnt == V_TOTAL[8:0] - 9'd1) vcnt <= 9'd0;
+                    else                             vcnt <= vcnt + 9'd1;
+
+                    // Start of a new line: queue the fill for the line after it.
+                    line_start <= 1'b1;
+
+                    if (vcnt == V_VIS[8:0] - 9'd1) vblank_rise <= 1'b1;
+                end else begin
+                    hcnt <= hcnt + 10'd1;
+                end
+            end else begin
+                divcnt <= divcnt + 4'd1;
+            end
+        end
+    end
+
+    // next_line wraps so the last visible line's fill doesn't run off the end.
+    assign next_line = (vcnt == V_TOTAL[8:0] - 9'd1) ? 9'd0 : vcnt + 9'd1;
+
+    assign hblank = (hcnt >= H_VIS[9:0]);
+    assign vblank = (vcnt >= V_VIS[8:0]);
+    assign hsync  = (hcnt >= HS_START[9:0]) && (hcnt < HS_END[9:0]);
+    assign vsync  = (vcnt >= VS_START[8:0]) && (vcnt < VS_END[8:0]);
+
+endmodule
