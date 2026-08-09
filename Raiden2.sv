@@ -360,6 +360,7 @@ wire [127:0] status;
 wire [10:0]  ps2_key;
 wire [21:0]  gamma_bus;
 wire [31:0]  joystick_0, joystick_1;
+wire [15:0]  joystick_l_analog_0;
 
 wire         ioctl_download;
 wire         ioctl_wr;
@@ -403,6 +404,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
     .ioctl_wait(dl_busy),
 
     .joystick_0(joystick_0),
+    .joystick_l_analog_0(joystick_l_analog_0),
     .joystick_1(joystick_1),
     .ps2_key(ps2_key)
 );
@@ -1047,6 +1049,57 @@ raiden2_video_timing timing
     .line_start(line_start), .next_line(next_line)
 );
 
+//--------------------------------------------------------------------------
+// Keyboard, and the analog stick, folded into player 1's joystick word
+//--------------------------------------------------------------------------
+// Layout follows the arcade convention MAME uses, so muscle memory carries
+// over: arrows move, Ctrl fires, Alt drops a bomb, 5 inserts a coin, 1 starts.
+//
+// ps2_key is {toggle, pressed, extended, code[7:0]}; the toggle bit flips on
+// every key event, which is what makes a repeated press visible. The arrow
+// keys share their codes with the keypad, so the extended bit is deliberately
+// ignored -- either one works, exactly as the reference cores do it.
+reg key_up = 0, key_down = 0, key_left = 0, key_right = 0;
+reg key_ctrl = 0, key_alt = 0, key_1 = 0, key_5 = 0;
+
+always @(posedge clk_sys) begin
+    reg old_state;
+    old_state <= ps2_key[10];
+    if (old_state != ps2_key[10]) begin
+        case (ps2_key[7:0])
+            8'h75: key_up    <= ps2_key[9];
+            8'h72: key_down  <= ps2_key[9];
+            8'h6B: key_left  <= ps2_key[9];
+            8'h74: key_right <= ps2_key[9];
+            8'h14: key_ctrl  <= ps2_key[9];   // fire
+            8'h11: key_alt   <= ps2_key[9];   // bomb
+            8'h16: key_1     <= ps2_key[9];   // start 1
+            8'h2E: key_5     <= ps2_key[9];   // coin
+            default: ;
+        endcase
+    end
+end
+
+// Analog stick as a fifth d-pad. The pad reports signed -128..127 per axis;
+// a third of full deflection is far enough to be deliberate and close enough
+// to be comfortable, and it leaves a wide dead zone so a resting stick never
+// creeps. Y is inverted because the pad's positive Y points DOWN.
+localparam signed [7:0] ANA_TH = 8'sd48;
+wire signed [7:0] ana_x = joystick_l_analog_0[7:0];
+wire signed [7:0] ana_y = joystick_l_analog_0[15:8];
+wire ana_right = ana_x >  ANA_TH;
+wire ana_left  = ana_x < -ANA_TH;
+wire ana_down  = ana_y >  ANA_TH;
+wire ana_up    = ana_y < -ANA_TH;
+
+// One merged word per player. Everything downstream indexes these instead of
+// joystick_0/1 directly, so a new input source only has to be added here.
+wire [15:0] j0 = joystick_0[15:0]
+               | {4'd0, key_5, key_1, 4'd0, key_alt, key_ctrl,
+                  ana_up | key_up, ana_down | key_down,
+                  ana_left | key_left, ana_right | key_right};
+wire [15:0] j1 = joystick_1[15:0];
+
 // Inputs are active low on the board. MiSTer joystick bits are
 // 0=right 1=left 2=down 3=up, then the buttons named by the CONF_STR "J1,..."
 // list from bit 4 up -- INCLUDING its "-" placeholders, so Fire=4, Bomb=5,
@@ -1061,8 +1114,8 @@ wire [15:0] p1p2_in = ~{
     joystick_1[5:4],                                                  // 13:12
     joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3],       // 11:8
     2'd0,                                                             //  7:6
-    joystick_0[5:4],                                                  //  5:4
-    joystick_0[0], joystick_0[1], joystick_0[2], joystick_0[3]        //  3:0
+    j0[5:4],                                                          //  5:4
+    j0[0], j0[1], j0[2], j0[3]                                        //  3:0
 };
 
 // SYSTEM is START1, START2, unused, SERVICE1 -- it carries no coin inputs.
@@ -1074,9 +1127,9 @@ wire [15:0] p1p2_in = ~{
 // core, which documents "10=Start" and "Coin button (joy[11])".
 wire [15:0] system_in = ~{
     12'd0,
-    joystick_0[12],                     // [3] service (test switch)
+    j0[12],                             // [3] service (test switch)
     1'b0,                               // [2] unused
-    joystick_1[10], joystick_0[10]      // [1] start 2, [0] start 1
+    j1[10], j0[10]                      // [1] start 2, [0] start 1
 };
 // Not inverted: unlike the joysticks above, MRA switch bytes are already in
 // the board's active-low form.
@@ -1194,7 +1247,7 @@ wire        dbg_unknown_valid;
 // read off the UART at leisure instead of racing a live capture. Sound keeps
 // running deliberately -- silence would be a second variable.
 // Button index 9 in the J1 list above => joystick bit 13 (Fire=4 ... Pause=13).
-wire pause_btn = joystick_0[13] | joystick_1[13];
+wire pause_btn = j0[13] | j1[13];
 reg  pause_btn_d, paused;
 always @(posedge clk_sys) begin
     if (reset) begin
@@ -1533,7 +1586,7 @@ wire [15:0] snd_rom_ofs = snd_dl_off[16:1];
 // coin_r at 0x4013: bit 0 COIN1, bit 1 COIN2, active low, everything else
 // idle high (SEIBU_COIN_INPUTS_INVERT).
 // Coin is joystick bit 11 (see the CONF_STR note above), not bit 7.
-wire  [7:0] snd_coin_in = ~{6'd0, joystick_1[11], joystick_0[11] | auto_coin};
+wire  [7:0] snd_coin_in = ~{6'd0, j1[11], j0[11] | auto_coin};
 
 // Credit counter, streamed over the UART. Without this a "did the coin work"
 // capture is guesswork: 0x9F?? credits live in work RAM, but the simplest
@@ -1666,8 +1719,8 @@ always @(posedge clk_sys) if (vblank_rise) cpu_pc_latched <= dbg_pc;
 localparam [5:0] SCROLL_MAX = 6'd12;
 reg  [5:0] page_scroll;
 reg        scr_up_d, scr_dn_d;
-wire       scr_up = joystick_0[3] | joystick_1[3];
-wire       scr_dn = joystick_0[2] | joystick_1[2];
+wire       scr_up = j0[3] | j1[3];
+wire       scr_dn = j0[2] | j1[2];
 always @(posedge clk_sys) begin
     scr_up_d <= scr_up;
     scr_dn_d <= scr_dn;

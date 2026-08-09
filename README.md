@@ -66,16 +66,18 @@ Defaults follow the same layout as
 [Arcade-Cave_MiSTer](https://github.com/MiSTer-devel/Arcade-Cave_MiSTer), so
 shmups behave the same way across cores:
 
-| Control | Action |
-|---|---|
-| D-pad / stick | Move |
-| A | Fire |
-| B | Bomb |
-| R | Start |
-| L | Insert coin |
-| Start | Pause |
+| Gamepad | Keyboard | Action |
+|---|---|---|
+| D-pad or left analog stick | Arrow keys | Move |
+| A | Ctrl | Fire |
+| B | Alt | Bomb |
+| R | 1 | Start |
+| L | 5 | Insert coin |
+| Start | — | Pause |
 
-All of these can be remapped in the MiSTer menu.
+The left analog stick works alongside the d-pad without any setup, and the
+keyboard layout is the usual arcade one, so muscle memory from MAME carries
+over. All gamepad buttons can be remapped in the MiSTer menu.
 
 ## Built-in self test
 
