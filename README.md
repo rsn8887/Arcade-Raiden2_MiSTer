@@ -143,6 +143,9 @@ Three things that will trip you up:
   a marketing suffix and Quartus rejects it.
 - Quartus 17.0 does not understand `case (...) inside`, even though Verilator
   does. Use an if/else chain instead.
+- Quartus 17.0 cannot **index a function call result** — `f(a,b)[5:4]` is a
+  syntax error there and compiles fine under Verilator. Assign the call to a
+  wire first, then slice the wire.
 - **Always check that timing passed before using a build.** Quartus prints
   "Full Compilation was successful" even when timing has failed. Search the
   log for `Timing requirements not met`.

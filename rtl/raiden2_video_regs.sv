@@ -86,6 +86,12 @@ module raiden2_video_regs (
     //     read_word(bitswap<16>(offset, ...,5,3,4,2,1,0))
     // i.e. address bits 4 and 3 exchanged. Everything else about the register
     // file is identical, so this one swap is the whole difference.
+    // Quartus 17.0 cannot index a function call result, so the merged
+    // value is computed here rather than sliced inline below.
+    // Note: combine(...)[5:4] compiles under Verilator but Quartus rejects
+    // it outright -- do not put the slice back inline.
+    wire  [15:0] cop_bank_next = combine(cop_bank, reg_dout, reg_be);
+
     wire   [5:0] crtc_raw = reg_addr[5:0];
     wire   [5:0] crtc_ofs = game_dx ? {crtc_raw[5], crtc_raw[3], crtc_raw[4], crtc_raw[2:0]}
                                     : crtc_raw;
@@ -136,9 +142,9 @@ module raiden2_video_regs (
             // DX additionally banks program ROM from cop_bank[15:12]; see
             // dx_prg_bank above.
             if (copbank_cs) begin
-                cop_bank <= combine(cop_bank, reg_dout, reg_be);
+                cop_bank <= cop_bank_next;
                 if (game_dx)
-                    fg_bank <= {1'b1, combine(cop_bank, reg_dout, reg_be)[5:4]};
+                    fg_bank <= {1'b1, cop_bank_next[5:4]};
                 else if (reg_be[1])
                     fg_bank <= {1'b1, reg_dout[15:14]};
             end

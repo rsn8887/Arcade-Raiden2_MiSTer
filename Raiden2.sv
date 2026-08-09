@@ -547,9 +547,9 @@ wire        sdr_gfx_rdy;
 reg         sdr_gfx_req;
 
 wire [63:0] sdr_cpu_dout;
-reg  [24:0] sdr_cpu_addr;
+wire [24:0] sdr_cpu_addr;
 wire        sdr_cpu_rdy;
-reg         sdr_cpu_req;
+wire        sdr_cpu_req = sdr_cpu_req_w;
 
 // ---- Crossing the clk_ram -> clk_sys boundary ------------------------
 //
@@ -969,52 +969,22 @@ raiden2_sdram_bist bist
 // fetches) rather than assumed.
 wire [20:0] cpu_rom_addr;   // 21 bits: Raiden DX banks past 1 MB
 wire        cpu_rom_req;
-reg  [15:0] cpu_rom_data_r;
-reg         cpu_fetch_pending;
-reg  [20:0] cpu_fetch_addr;
+wire [15:0] cpu_rom_data;
+wire        cpu_rom_ready;
+wire        cpu_fetch_pending;
+wire        cpu_fetch_done;
+wire        sdr_cpu_req_w;
 
-reg [15:0] cpu_line [0:3];
-reg [17:0] cpu_line_tag;
-reg        cpu_line_valid;
-
-wire cpu_line_hit = cpu_line_valid && (cpu_rom_addr[20:3] == cpu_line_tag);
-wire cpu_word_hit = (cpu_rom_addr[20:1] == cpu_fetch_addr[20:1]);
-
-wire cpu_fetch_start = cpu_rom_req && !(cpu_line_hit || cpu_word_hit);
-wire cpu_rom_ready   = ~cpu_fetch_pending & ~cpu_fetch_start;
-
-wire [15:0] cpu_rom_data = cpu_line_hit ? cpu_line[cpu_rom_addr[2:1]]
-                                        : cpu_rom_data_r;
-
-always @(posedge clk_sys) begin
-    sdr_cpu_req <= 1'b0;                // one-clock pulse, never a toggle
-
-    if (reset) begin
-        cpu_fetch_pending <= 1'b0;
-        cpu_fetch_addr    <= 21'h1FFFFF;
-        cpu_line_valid    <= 1'b0;
-    end else if (!cpu_fetch_pending) begin
-        if (cpu_fetch_start) begin
-            cpu_fetch_addr    <= cpu_rom_addr;
-            sdr_cpu_addr      <= SDR_MAINCPU + {4'd0, cpu_rom_addr};
-            sdr_cpu_req       <= 1'b1;
-            cpu_fetch_pending <= 1'b1;
-        end
-    end else if (sdr_cpu_ack) begin
-        cpu_rom_data_r    <= sdr_cpu_dout[15:0];
-        cpu_fetch_pending <= 1'b0;
-
-        cpu_line[ cpu_fetch_addr[2:1]               ] <= sdr_cpu_dout[15:0];
-        cpu_line[(cpu_fetch_addr[2:1] + 2'd1) & 2'd3] <= sdr_cpu_dout[31:16];
-        cpu_line[(cpu_fetch_addr[2:1] + 2'd2) & 2'd3] <= sdr_cpu_dout[47:32];
-        cpu_line[(cpu_fetch_addr[2:1] + 2'd3) & 2'd3] <= sdr_cpu_dout[63:48];
-        cpu_line_tag   <= cpu_fetch_addr[20:3];
-        cpu_line_valid <= 1'b1;
-    end
-end
-
-// One pulse per program word that actually came back from SDRAM.
-wire cpu_fetch_done = cpu_fetch_pending & sdr_cpu_ack;
+raiden2_cpu_fetch cpu_fetch (
+    .clk(clk_sys), .reset(reset),
+    .base(SDR_MAINCPU),
+    .line_cache_en(1'b1),
+    .cpu_addr(cpu_rom_addr), .cpu_req(cpu_rom_req),
+    .cpu_data(cpu_rom_data), .cpu_ready(cpu_rom_ready),
+    .sdr_addr(sdr_cpu_addr), .sdr_req(sdr_cpu_req_w),
+    .sdr_dout(sdr_cpu_dout), .sdr_ack(sdr_cpu_ack),
+    .fetch_done(cpu_fetch_done), .fetch_pending(cpu_fetch_pending)
+);
 
 // ---- Tile / char fetch for sei0200 ------------------------------------
 wire [22:0] gfx_addr;

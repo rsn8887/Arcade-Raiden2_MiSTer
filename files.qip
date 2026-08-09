@@ -4,6 +4,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE Raiden2.sv
 
 # Seibu-specific RTL
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_main.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_cpu_fetch.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_addr_decode.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_cop_dma.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/raiden2_cop_cmd.sv
