@@ -1466,8 +1466,26 @@ wire [7:0] u_r = {ur5, ur5[4:2]}, u_g = {ug5, ug5[4:2]}, u_b = {ub5, ub5[4:2]};
 
 // MAME uses alpha_blend_r32(dst, src, 0x7f) for the blended entries, i.e. an
 // even mix of the pixel and whatever is behind it.
+//
+// The sums are declared 9 bits wide ON PURPOSE. Written inline as
+//     {(t_r + u_r) >> 1, (t_g + u_g) >> 1, (t_b + u_b) >> 1}
+// each addition sits inside a concatenation, where its width is
+// SELF-DETERMINED -- 8 bits, the width of its operands -- so the carry is
+// discarded before the shift. Any channel pair summing over 255 wrapped to
+// near zero: the attract-intro engine flames, RGB(165,198,148) over the
+// brown rock RGB(123,107,82), should blend to RGB(144,152,115) but came out
+// RGB(16,24,115), because red and green overflowed and blue did not. That is
+// the "green/white flames render purple and blue" bug (#78).
+//
+// sei360 was NOT at fault and its 100,000-vector oracle pass was not wrong:
+// the mixer only emits indices and the blend flag, and this arithmetic lives
+// here in the top level where nothing tested it.
+wire [8:0] blend_r = {1'b0, t_r} + {1'b0, u_r};
+wire [8:0] blend_g = {1'b0, t_g} + {1'b0, u_g};
+wire [8:0] blend_b = {1'b0, t_b} + {1'b0, u_b};
+
 wire [23:0] rgb_top   = {t_r, t_g, t_b};
-wire [23:0] rgb_blend = {(t_r + u_r) >> 1, (t_g + u_g) >> 1, (t_b + u_b) >> 1};
+wire [23:0] rgb_blend = {blend_r[8:1], blend_g[8:1], blend_b[8:1]};
 wire [23:0] rgb = ~mix_opaque ? 24'd0
                 : mix_blend   ? rgb_blend
                               : rgb_top;

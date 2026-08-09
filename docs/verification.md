@@ -1,93 +1,93 @@
-# Verification
+# How this core is tested
 
-How this core is tested, what that testing has caught, and — just as
-importantly — what it has repeatedly failed to catch.
+Short version: for each chip on the arcade board, a reference model was written
+from the MAME source **first**, and the FPGA code is then compared against it,
+signal by signal or pixel by pixel.
 
-## Method: oracle-first
+The point of writing the model first is that it is an independent
+implementation. If the two agree, that means something. If the FPGA code were
+checked against a recording of its own output, agreement would mean nothing.
 
-For each block, a reference model is written from the MAME sources *before* the
-RTL, and the RTL is then diffed against it under Verilator. The model is an
-independent implementation, not a recording of our own output, so agreement
-means something.
+## Results
 
-| Block | Oracle | Result |
+| Chip | Compared against | Result |
 |---|---|---|
-| `raiden2_cop_cmd` (Seibu COP) | `tb_cop_cmd.cpp` vs MAME | 58/58 commands |
-| `raiden2_r2crypt` (sprite decrypt) | `tools/r2crypt.py` | 200,032 vectors exact |
-| `raiden2_sei360` (mixer) | `tools/mix_model.py` | 100,000 vectors exact |
-| `sei252` (sprite renderer) | `tools/render_sprites.py` | 76800/76800 pixels |
-| `sei0200` (tilemaps) | `tools/render_frame.py` | pixel exact |
-| `raiden2_seibu_latch` | `tb_seibu_latch.cpp` vs MAME | 36/36 |
+| Seibu COP (protection/maths) | `tb_cop_cmd.cpp` vs MAME | all 58 commands match |
+| Sprite decryption | `tools/r2crypt.py` | 200,032 test values, all exact |
+| SEI360 mixer | `tools/mix_model.py` | 100,000 test values, all exact |
+| SEI252 sprite chip | `tools/render_sprites.py` | 76,800 of 76,800 pixels match |
+| SEI0200 tilemap chip | `tools/render_frame.py` | every pixel matches |
+| Sound latch | `tb_seibu_latch.cpp` vs MAME | 36 of 36 cases match |
 
-Every oracle-checked block has been correct on hardware the first time it ran.
+Every chip checked this way worked correctly on real hardware the first time.
 
-## Gates
+## The test benches
 
-Fourteen Verilator harnesses, each runnable standalone:
+There are fourteen, each one runnable on its own:
 
 ```
-spr-run  sprpaced-run  sprprot-run  cop-run   crypt-run  mix-run  latch-run
-itoa-run bist-run      selftest-run sdmain-run sound-run  vec-run  video-run
+spr-run   sprpaced-run  sprprot-run  cop-run    crypt-run  mix-run  latch-run
+itoa-run  bist-run      selftest-run sdmain-run sound-run  vec-run  video-run
 ```
 
-`sei252` is gated by two harnesses deliberately, because one is not enough:
+The sprite chip has **two** benches on purpose:
 
-- **`spr-run`** renders every scanline offline and diffs against
-  `render_sprites.py` pixel for pixel.
-- **`sprpaced-run`** drives `line_start` at the hardware cadence (every 4096
-  clocks) into a possibly-busy engine, with request-time address latching, and
-  classifies each line as clean / stale / corrupt.
+- **`spr-run`** draws every scanline offline and compares it to the reference
+  picture, pixel for pixel.
+- **`sprpaced-run`** starts a new line every 4,096 clocks whether the chip has
+  finished the last one or not, exactly as the real board does.
 
-The second exists because the first passed a change that doubled sprites on
-real hardware. A bench that paces its stimulus more politely than the hardware
-does will pass forever.
+The second one exists because the first one passed a change that doubled every
+sprite on real hardware. A test that treats the chip more gently than the
+hardware does will keep passing forever.
 
-## On-hardware self test
+## The self test on real hardware
 
-The core streams a 22-check self test over the debug UART, decoded by
-`tools/decode_selftest.py`. It covers PLL lock, ROM load, SDRAM verify, CPU
-fetch/boot, VBLANK IRQ, COP DMA, CRAM/tilemap fill, GFX and sprite ROM fetch,
-sprite decrypt, pixel output, the Z80, YM2151, and both OKI6295 channels.
+The core runs 22 checks at start-up — clocks, memory, CPU, video chips, sound
+chips — and sends the results over a serial port. On a DE10-Nano it currently
+reads **22 out of 22**.
 
-Current status on a DE10-Nano: **22/22 PASS**.
+This exists because a picture on a monitor cannot tell you whether the sound
+chip is fetching samples, and several conclusions drawn from simply watching
+the screen turned out to be wrong.
 
-This exists because on-screen checks could not report anything about the sound
-path or about sprite fetching, and several conclusions drawn from watching the
-screen turned out to be wrong.
+## What the testing does **not** catch
 
-## Known limitations of the testing
+This is the honest part, and it is worth reading before trusting a green result.
 
-Stated plainly, because they are the honest part:
+**Every hardware fault so far has been in the wiring *between* tested chips,
+not inside them.** Each chip passed its own tests and was still wrong once
+connected. The most recent example: the mixer passed 100,000 test values, and
+the bug was in the arithmetic that blends two colours together — code that sits
+outside the mixer, in the top level, where no test was looking.
 
-- **Every hardware bug so far has been in the untested wiring *between*
-  oracle-checked blocks**, not inside them. Module-level correctness has not
-  predicted integration correctness even once.
-- A passing gate is only as good as its stimulus. Two separate incidents:
-  a bench whose sprite-list input had been silently emptied still reported
-  `76800/76800 EXACT MATCH`, and a two-sequencer handoff deadlock could not be
-  reproduced by either bench because both idle far longer between lines than
-  hardware does. Benches now assert their inputs are non-trivial, and the
-  comparator refuses to return a verdict on a blank reference.
-- `sdmain-run` exercises the CPU and SDRAM path but does **not** instantiate
-  `sei252`, so it is not a gate for the sprite renderer.
+**A test is only as good as what you feed it.** Two real cases:
 
-## Not yet fully playable
+- A sprite bench reported "76,800 of 76,800 pixels match" while its input list
+  of sprites had been silently emptied. Blank matched blank perfectly. The
+  benches now refuse to run on empty input.
+- Two parts of the sprite chip hand work to each other. A fault in that handover
+  could only happen when the timing was exactly back to back — and both benches
+  left a comfortable gap, so neither could ever produce it. Real hardware leaves
+  no gap.
 
-Two known issues remain, and this core should not be considered finished until
-they are closed:
+**`sdmain-run` does not include the sprite chip**, so it is not a test of it,
+despite exercising the memory path that feeds it.
 
-1. The sprite renderer can exceed its per-line clock budget in dense scenes,
-   dropping scanlines. Reduced substantially but not eliminated.
-2. Inserting a coin can stop sprite ROM fetching, which is reproducible and
-   under investigation.
+## Not finished yet
 
-## Reproducing
+Two known faults remain, described in the [README](../README.md). This core
+should not be considered complete until they are fixed.
 
-The harnesses and reference models live in the development tree alongside this
-repository (`sim/`, `tools/`). Sprite-renderer inputs come from a long run of
-the real game (`make run CYCLES=150000000`); shorter runs never reach attract
-mode and produce an empty sprite list, which silently makes the comparison
-vacuous.
+## Reproducing the tests
 
-**No ROMs are included anywhere in this repository.** The MRA references MAME
-zips by CRC only.
+The benches and reference models live in the wider development tree (`sim/` and
+`tools/`), not in this repository.
+
+One thing to know: the sprite benches need a real list of sprites, produced by
+running the game in simulation for a long time (`make run CYCLES=150000000`).
+Shorter runs never reach the attract sequence and produce an empty list — which
+silently makes the comparison meaningless, as described above.
+
+**No ROMs are included anywhere in this repository.** The `.mra` file refers to
+MAME ROM sets by CRC only.
