@@ -194,14 +194,28 @@ The benches and reference models live in the wider development tree (`sim/` and
 
 The sprite and tilemap chips each have 4,096 clocks to draw one scanline
 (512 pixels × 8). Over that and the line is dropped, which looks like
-flickering or missing graphics. Measured on a DE10-Nano over one day of work:
+flickering or missing graphics.
 
-| | worst line | dropped scanlines |
-|---|---|---|
-| start of day | 8,262 | 59 to 132 |
-| after the fetch fix | 6,793 | 69 on a boss |
-| after splitting the sprite engine in two | 4,678 | 4 |
-| after the scanner optimisations | **4,228** | **0** |
+Where both chips stand on a DE10-Nano, measured per line:
+
+| chip | worst line | budget | dropped scanlines |
+|---|---|---|---|
+| sprites (SEI252) | **3,973** | 4,096 | **0** |
+| tilemaps (SEI0200) | **3,568** | 4,096 | **0** |
+
+The sprite chip started at 8,262 clocks with 59 to 132 scanlines dropped per
+frame. Three changes closed that: a duplicate memory fetch that made every
+back-to-back read return the previous one's data; splitting the chip into a
+scanner and a plotter so the next sprite is found while the current one is
+still being drawn; and two scanner optimisations. The tilemap chip got the
+same treatment for the column it was not prefetching.
+
+A caution for anyone comparing against older notes: the on-chip counters
+originally measured from one busy edge to the next, which spans several lines
+whenever a line overruns, and they were never cleared per frame — so they
+included start-up, when the ROM load saturates memory. One capture read 40,522
+that way, which is not a fill time at all. They now restart every line. Any
+figure recorded before that fix is an upper bound, not a per-line measurement.
 
 ### What the testing does **not** catch
 
