@@ -33,6 +33,10 @@
 //============================================================================
 
 module raiden2_sound (
+    // Sample ROM bases; runtime because Raiden DX relocates them.
+    input  logic [24:0] OKI1_BASE,
+    input  logic [24:0] OKI2_BASE,
+
     input  logic        clk,            // clk_sys, 64 MHz
     input  logic        reset,
 
@@ -262,8 +266,6 @@ module raiden2_sound (
     // Each gets a one-line cache: ADPCM playback walks memory sequentially, so
     // one 8-byte fetch covers eight consecutive reads and ch4 sees very little
     // traffic even with both channels running.
-    localparam [24:0] OKI1_BASE = 25'h0180000;
-    localparam [24:0] OKI2_BASE = 25'h01C0000;
 
     wire [17:0] oki1_raddr, oki2_raddr;
     wire  [7:0] oki1_rdata, oki2_rdata;
@@ -272,9 +274,8 @@ module raiden2_sound (
     // The line cache lives in its own module so it can be simulated without
     // T80 (VHDL, which Verilator cannot elaborate). `make sound-run` drives
     // this exact instance against a behavioural ch4 responder. See HANDOFF #65.
-    raiden2_oki_cache #(
-        .OKI1_BASE(OKI1_BASE), .OKI2_BASE(OKI2_BASE)
-    ) u_oki_cache (
+    raiden2_oki_cache u_oki_cache (
+        .OKI1_BASE(OKI1_BASE), .OKI2_BASE(OKI2_BASE),
         .clk(clk), .reset(reset),
         .oki1_raddr(oki1_raddr), .oki2_raddr(oki2_raddr),
         .oki1_rdata(oki1_rdata), .oki2_rdata(oki2_rdata),

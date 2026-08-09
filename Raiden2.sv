@@ -495,10 +495,27 @@ wire reset     = sys_reset | rom_load_busy | bist_busy;
 // program fetches and the ROM download. ch2/ch4 are reserved for sprites and
 // PCM once those exist.
 
-localparam [24:0] SDR_MAINCPU = 25'h000000;
-localparam [24:0] SDR_CHARS   = 25'h120000;
-localparam [24:0] SDR_TILES   = 25'h200000;
-localparam [24:0] SDR_SPRITES = 25'h600000;
+// SDRAM layout. Raiden II's offsets are LEFT EXACTLY AS THEY WERE -- they are
+// verified end to end and its MRA encodes them -- and Raiden DX gets its own
+// map, because DX has a 2 MB program ROM (vs 1 MB) and 1 MB OKI regions (vs
+// 256 KB), which will not fit Raiden II's layout at any offset.
+//
+//            Raiden II            Raiden DX
+//  maincpu   000000  1 MB         000000  2 MB
+//  audio     100000  128 K        200000  128 K
+//  chars     120000  128 K        220000  128 K
+//  copx      140000  256 K        240000  256 K
+//  oki1      180000  256 K        280000  1 MB
+//  oki2      1C0000  256 K        380000  1 MB
+//  tiles     200000  4 MB         480000  4 MB
+//  sprites   600000  8 MB         880000  8 MB
+//            = 14 MB              = 16.5 MB
+localparam [24:0] SDR_MAINCPU = 25'h000000;      // same base for both
+wire [24:0] SDR_CHARS   = game_dx ? 25'h220000 : 25'h120000;
+wire [24:0] SDR_TILES   = game_dx ? 25'h480000 : 25'h200000;
+wire [24:0] SDR_SPRITES = game_dx ? 25'h880000 : 25'h600000;
+wire [24:0] SDR_OKI1    = game_dx ? 25'h280000 : 25'h180000;
+wire [24:0] SDR_OKI2    = game_dx ? 25'h380000 : 25'h1C0000;
 
 wire [31:0] sdr_gfx_dout;
 wire [24:0] sdr_gfx_addr;
@@ -1577,7 +1594,7 @@ wire [23:0] rgb = ~mix_opaque ? 24'd0
 // fourth SDRAM client competing with video for bandwidth every few cycles.
 // It is filled from the same download stream, tapped at the point where words
 // are accepted, so it sees exactly what SDRAM sees.
-localparam [24:0] SDR_AUDIO = 25'h0100000;      // 128 KB
+wire [24:0] SDR_AUDIO = game_dx ? 25'h200000 : 25'h100000;   // 128 KB
 
 wire [24:0] snd_dl_off  = dl_acc_addr - SDR_AUDIO;
 wire        snd_rom_wr  = dl_acc && (dl_acc_addr >= SDR_AUDIO)
@@ -1635,6 +1652,7 @@ raiden2_sound sound
 
     .rom_wr(snd_rom_wr), .rom_wr_addr(snd_rom_ofs), .rom_wr_data(dl_acc_data),
 
+    .OKI1_BASE(SDR_OKI1), .OKI2_BASE(SDR_OKI2),
     .oki_addr(sdr_oki_addr), .oki_req(sdr_oki_req),
     .oki_dout(sdr_oki_dout), .oki_ack(sdr_oki_ack),
 

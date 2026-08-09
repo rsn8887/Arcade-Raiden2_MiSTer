@@ -14,9 +14,14 @@
 //============================================================================
 
 module raiden2_oki_cache #(
-    parameter [24:0] OKI1_BASE = 25'h0180000,
-    parameter [24:0] OKI2_BASE = 25'h01C0000
+    parameter [24:0] OKI1_BASE_DEFAULT = 25'h0180000,
+    parameter [24:0] OKI2_BASE_DEFAULT = 25'h01C0000
 ) (
+    // Runtime bases: Raiden DX has 1 MB OKI regions and a different
+    // layout, so these cannot be compile-time constants any more.
+    input  logic [24:0] OKI1_BASE,
+    input  logic [24:0] OKI2_BASE,
+
     input  logic        clk,            // clk_sys, 64 MHz
     input  logic        reset,
 
