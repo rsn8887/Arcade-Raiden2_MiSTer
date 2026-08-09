@@ -46,10 +46,16 @@ scanlines and dropped them. Dropped scanlines now measure zero on hardware.
 You need three things on your MiSTer's SD card:
 
 1. `releases/Arcade-Raiden2_YYYYMMDD.rbf` → copy to `/media/fat/_Arcade/cores/`
+   **and rename it to `Raiden2_YYYYMMDD.rbf`**, dropping the `Arcade-` prefix
 2. `releases/Raiden II.mra` → copy to `/media/fat/_Arcade/`
 3. `raiden2.zip` (a MAME ROM set) → copy to `/media/fat/games/mame/`
 
 Then pick **Raiden II** from the Arcade menu.
+
+The rename is not optional. The `Arcade-` prefix is a *repository* naming
+convention; on the SD card the core must match the `<rbf>Raiden2</rbf>` field
+in the MRA. The MiSTer updater does this rename automatically, which is why no
+installed core on a working system carries the prefix.
 
 **No ROMs are included here, and none ever will be.** The `.mra` file only
 lists which files it needs and checks them by CRC. You must supply your own.
