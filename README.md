@@ -29,15 +29,17 @@ rather than a finished core.
 
 These are the reasons the core is not finished yet:
 
-1. **See-through effects show the wrong colour.** Things drawn at 50%
-   transparency — engine flames, water, clouds — come out blue or purple
-   instead of their proper colour. The cause is found and fixed in the source,
-   but the compiled core in `releases/` was built before the fix. Issue #78.
-2. **A few colours sit at the wrong brightness.** The real game runs a fade
+1. **A few colours sit at the wrong brightness.** The real game runs a fade
    animation during attract mode that this core does not, so some palette
-   entries stay too dark or too bright. Issue #74.
-3. **Sprite scanlines can still drop in very busy scenes.** Much improved, but
-   the sprite chip can occasionally run out of time on a line.
+   entries stay too dark or too bright. This does not change which colour
+   something is, only how light or dark. Issue #74.
+2. **Only Raiden II is supported.** There is one MRA. Other sets in the same
+   family, such as Raiden DX, are not covered.
+
+Recently fixed and included in the current release: see-through effects
+(engine flames, water, clouds) came out blue or purple because the colour
+blend threw away its carry; and the sprite chip ran out of time on busy
+scanlines and dropped them. Dropped scanlines now measure zero on hardware.
 
 ## How to use it
 

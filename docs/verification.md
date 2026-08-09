@@ -76,8 +76,21 @@ despite exercising the memory path that feeds it.
 
 ## Not finished yet
 
-Two known faults remain, described in the [README](../README.md). This core
+The remaining known faults are listed in the [README](../README.md). This core
 should not be considered complete until they are fixed.
+
+## Measured on hardware
+
+The sprite chip has a fixed budget of 4,096 clocks per scanline. Anything over
+that and the line is dropped, which shows as flickering or missing sprites.
+Progress over one day of work, read off the core's own counters on a DE10-Nano:
+
+| | worst line | dropped scanlines |
+|---|---|---|
+| start of day | 8,262 | 59 to 132 |
+| after the fetch fix | 6,793 | 69 on a boss |
+| after splitting the sprite engine in two | 4,678 | 4 |
+| after the scanner optimisations | **4,228** | **0** |
 
 ## Reproducing the tests
 
