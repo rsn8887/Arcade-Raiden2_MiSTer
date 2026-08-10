@@ -93,6 +93,17 @@ module raiden2_cop_cmd (
 
     output logic        busy,        // hold the CPU off the bus while high
     output logic        cmd_unknown, // pulses on a trigger we do not implement
+
+    // ---- COP 0x7e05, Raiden DX only ----------------------------------
+    // MAME (seibucop_cmd.ipp, tagged "raidendx"):
+    //     write_byte(0x470, read_byte(cop_regs[4]))
+    // 0x470 is the tile bank register, and on DX its low bits select the
+    // FOREGROUND bank. DX issues this ~2,400 times in 45 s to re-bank that
+    // layer as it scrolls; ignoring it leaves the foreground stuck on
+    // whichever bank was last written, which is a large visible graphics
+    // fault. Raiden II never issues this trigger at all.
+    output logic        cop_bank_we,   // one-clock strobe
+    output logic  [7:0] cop_bank_data, // byte read from [cop_regs[4]]
     // ---- beam probe (#73) --------------------------------------------
     // 0x0205 is the object POSITION UPDATE: pos += vel, and the integer
     // delta is added to the screen coordinate. The plasma ("toothpaste")
@@ -172,8 +183,14 @@ module raiden2_cop_cmd (
     // indexes into a per-op schedule. Dwords are little-endian pairs, matching
     // the V30 and MAME's read_dword/write_dword.
     //------------------------------------------------------------------
-    typedef enum logic [2:0] {
-        C_IDLE, C_RD_ADDR, C_RD_WAIT, C_RD_TAKE, C_WR, C_NEXT, C_CALC, C_DONE
+    // 4 bits, not 3: the eight original states filled a 3-bit enum exactly, so
+    // adding the 0x7e05 pair silently wrapped C_BANK_WAIT onto C_IDLE until
+    // the width was widened.
+    typedef enum logic [3:0] {
+        C_IDLE, C_RD_ADDR, C_RD_WAIT, C_RD_TAKE, C_WR, C_NEXT, C_CALC, C_DONE,
+        // 0x7e05 does not fit the microcoded step machine: it reads one byte
+        // and writes a REGISTER rather than work RAM, so it gets its own path.
+        C_BANK_WAIT, C_BANK_TAKE
     } cstate_t;
     cstate_t cstate;
 
@@ -766,7 +783,8 @@ module raiden2_cop_cmd (
                          (trigger == 16'ha900) || (trigger == 16'ha980) ||
                          (trigger == 16'hb100) || (trigger == 16'hb900);
 
-    wire cmd_known = (reg_data == 16'h0205) || (reg_data == 16'h0905) ||
+    wire cmd_known = (reg_data == 16'h7e05) ||
+                     (reg_data == 16'h0205) || (reg_data == 16'h0905) ||
                      (reg_data == 16'h0904) || (reg_data == 16'h2a05) ||
                      (reg_data == 16'h5205) || (reg_data == 16'h5a05) ||
                      (reg_data == 16'hf205) ||
@@ -788,6 +806,7 @@ module raiden2_cop_cmd (
         ram_rd      <= 1'b0;
         ram_we      <= 1'b0;
         cmd_unknown <= 1'b0;
+        cop_bank_we <= 1'b0;   // one-clock strobe, same as cmd_unknown
 
         if (reset) begin
             cstate     <= C_IDLE;
@@ -850,7 +869,15 @@ module raiden2_cop_cmd (
                     if (cmd_wr) begin
                         // MAME clears the top status bit on every command.
                         cop_status <= cop_status & 16'h7fff;
-                        if (cmd_known) begin
+                        if (reg_data == 16'h7e05) begin
+                            // Read the byte at cop_regs[4]; the register write
+                            // to 0x470 happens in C_BANK_TAKE. ram_addr is
+                            // ea[16:1], so the byte lane comes from ea[0].
+                            trigger <= reg_data;
+                            ea      <= cop_regs[4];
+                            latency <= RAM_LATENCY[1:0];
+                            cstate  <= C_BANK_WAIT;
+                        end else if (cmd_known) begin
                             trigger   <= reg_data;
                             cmd_swapf <= reg_data[7];    // allow_swap
                             col_axis3 <= reg_data[8];    // 3 axes instead of 2
@@ -1130,6 +1157,20 @@ module raiden2_cop_cmd (
                         step   <= step + 4'd1;
                         cstate <= C_RD_ADDR;
                     end
+                end
+
+                // ---- 0x7e05 (Raiden DX): tile bank copy -----------------
+                C_BANK_WAIT: begin
+                    ram_rd <= 1'b1;
+                    if (latency == 2'd0) cstate <= C_BANK_TAKE;
+                    else                 latency <= latency - 2'd1;
+                end
+
+                C_BANK_TAKE: begin
+                    ram_rd        <= 1'b0;
+                    cop_bank_data <= ea[0] ? ram_rdata[15:8] : ram_rdata[7:0];
+                    cop_bank_we   <= 1'b1;
+                    cstate        <= C_DONE;
                 end
 
                 default: cstate <= C_IDLE;   // C_DONE

@@ -88,6 +88,12 @@ module raiden2_main (
     output logic  [2:0] dbg_stall_src,   // {cmd_busy, dma_busy, ~rom_ready}
     output logic        dbg_dma_unknown,
     output logic        dbg_cmd_unknown,
+
+    // COP 0x7e05 (Raiden DX) writes the tile bank register at 0x470 itself.
+    // video_regs lives up in Raiden2.sv, so the strobe is routed out rather
+    // than handled here. See raiden2_cop_cmd.sv for why this exists.
+    output logic        cop_bank_we,
+    output logic  [7:0] cop_bank_data,
     output logic  [8:0] dbg_unknown_mode,
     output logic        dbg_unknown_valid,
 
@@ -461,6 +467,8 @@ module raiden2_main (
 
         .busy       (cmd_busy),
         .cmd_unknown(dbg_cmd_unknown),
+        .cop_bank_we(cop_bank_we),
+        .cop_bank_data(cop_bank_data),
         .dbg_cmd_any(dbg_cmd_any),
         .dbg_cmd_0205(dbg_cmd_0205)
     );

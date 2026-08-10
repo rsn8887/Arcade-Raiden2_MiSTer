@@ -49,6 +49,13 @@ module raiden2_video_regs (
     output logic  [3:0] dx_prg_bank, // DX program bank, from cop_bank[15:12]
     input  logic        copbank_cs,  // 0x470-0x471
 
+    // COP 0x7e05 (Raiden DX): the COP itself writes the tile bank register,
+    // write_byte(0x470, read_byte(cop_regs[4])). A byte write, so it touches
+    // the LOW half of cop_bank only. Without this the DX foreground layer
+    // never re-banks and shows the wrong tiles.
+    input  logic        cop_bank_we,
+    input  logic  [7:0] cop_bank_data,
+
     // Read-back into the CPU
     output logic [15:0] reg_din,
     output logic        reg_din_oe,
@@ -84,8 +91,14 @@ module raiden2_video_regs (
     // Raiden DX (and Sky Smasher) swap CRTC registers [0x10] and [0x20], which
     // MAME implements as read_alt/write_alt:
     //     read_word(bitswap<16>(offset, ...,5,3,4,2,1,0))
-    // i.e. address bits 4 and 3 exchanged. Everything else about the register
-    // file is identical, so this one swap is the whole difference.
+    // CAREFUL: that bitswap runs on the WORD offset (u16 handlers), so its
+    // bits 4 and 3 are BYTE address bits 5 and 4. The first implementation
+    // swapped byte bits 4/3 and every DX scroll write (raw 0x10-0x1A, verified
+    // with a MAME write tap against a Raiden II control run) landed on
+    // undecoded offsets and was dropped -- the background then only moved in
+    // the 16 px steps of the COP's tilemap DMA. The tap confirms byte 5<->4:
+    // DX raw 0x10<->II 0x20 (scroll), DX 0x2C<->II 0x1C (enable), same write
+    // counts and boot values on every register.
     // Quartus 17.0 cannot index a function call result, so the merged
     // value is computed here rather than sliced inline below.
     // Note: combine(...)[5:4] compiles under Verilator but Quartus rejects
@@ -93,7 +106,7 @@ module raiden2_video_regs (
     wire  [15:0] cop_bank_next = combine(cop_bank, reg_dout, reg_be);
 
     wire   [5:0] crtc_raw = reg_addr[5:0];
-    wire   [5:0] crtc_ofs = game_dx ? {crtc_raw[5], crtc_raw[3], crtc_raw[4], crtc_raw[2:0]}
+    wire   [5:0] crtc_ofs = game_dx ? {crtc_raw[4], crtc_raw[5], crtc_raw[3:0]}
                                     : crtc_raw;
 
     assign tx_bank      = 3'd0;
@@ -148,6 +161,14 @@ module raiden2_video_regs (
                 else if (reg_be[1])
                     fg_bank <= {1'b1, reg_dout[15:14]};
             end
+
+        // The COP's own write to 0x470, which is not a CPU bus cycle and so
+        // cannot arrive through reg_we above. Byte write: low half only, and
+        // the DX foreground bank is re-derived from it exactly as it is for a
+        // CPU write (raidendx_cop_bank_2_w: 4 | ((cop_bank >> 4) & 3)).
+        end else if (cop_bank_we) begin
+            cop_bank[7:0] <= cop_bank_data;
+            if (game_dx) fg_bank <= {1'b1, cop_bank_data[5:4]};
         end
     end
 

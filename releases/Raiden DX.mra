@@ -53,6 +53,16 @@
        the parts are written sequentially, so without it every later
        region lands 768 KB early.
        ============================================================ -->
+  <!-- Game select, read by the core at ioctl index 1. This MUST come BEFORE
+       index 0. Sprites are decrypted inline as the index-0 stream arrives and
+       the decrypt window is per-game, so the core has to know which map it is
+       loading before the first sprite byte reaches it. Listed after index 0
+       (as it was originally) every DX load decrypted against Raiden II's map
+       and the game came up garbled. -->
+  <rom index="1">
+    <part>01</part>
+  </rom>
+
   <rom index="0" zip="raidendx.zip" md5="None">
 
     <!-- maincpu 0x000000, 2 MB: ROM_LOAD32_BYTE, a FOUR-way byte
@@ -105,13 +115,6 @@
       <part name="dx_obj-3.u0837" crc="ba381227" map="0021"/>
       <part name="dx_obj-4.u0836" crc="65e50d19" map="2100"/>
     </interleave>
-  </rom>
-
-  <!-- Game select, read by the core at ioctl index 1. Must come AFTER
-       index 0: the core clears this at the start of the index-0 load so
-       that switching back to Raiden II cannot leave DX latched. -->
-  <rom index="1">
-    <part>01</part>
   </rom>
 
   <rom index="254" zip="raidendx.zip" type="nvram" md5="None">

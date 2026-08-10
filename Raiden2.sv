@@ -383,11 +383,20 @@ reg          rom_wr_pending;
 // register swap and the SDRAM layout, all of which differ between the two.
 reg [7:0] game_mod = 8'd0;
 always @(posedge clk_sys) begin
-    // Cleared whenever a new ROM load STARTS, so switching from Raiden DX back
-    // to Raiden II without a power cycle cannot leave the DX select latched.
-    // The MRA lists index 1 after index 0, so the clear always precedes it.
-    if (ioctl_wr && ioctl_index == 8'd0 && ioctl_addr == 0) game_mod <= 8'd0;
-    else if (ioctl_wr && ioctl_index == 8'd1)               game_mod <= ioctl_dout[7:0];
+    // The game select MUST be latched BEFORE the index-0 ROM data arrives, so
+    // both MRAs list <rom index="1"> FIRST. This is not cosmetic ordering:
+    // sprites are decrypted inline as they stream past (see SPR_BASE below),
+    // and the decrypt window is per-game. Latching the select after the data,
+    // as this used to, meant every DX load decrypted with Raiden II's map --
+    // tile data run through the sprite cipher, sprites keyed at the wrong
+    // offset, and the top 2.5 MB left as raw ciphertext.
+    //
+    // There is deliberately NO clear-on-index-0 any more: it would wipe the
+    // select that index 1 has just set. Both shipped MRAs state the game
+    // explicitly (Raiden II sends 00, Raiden DX sends 01), so switching
+    // between them cannot leave a stale value. An MRA that omits index 1
+    // entirely would inherit the previous game's map -- ours never do.
+    if (ioctl_wr && ioctl_index == 8'd1) game_mod <= ioctl_dout[7:0];
 end
 wire      game_dx = game_mod[0];
 wire [3:0] dx_prg_bank;   // 0x470 top nibble, DX program bank
@@ -716,8 +725,13 @@ sdram sdram
 // sprites were already decrypted offline (build_rom.py without --encrypted)
 // would decrypt them a second time and produce garbage.
 
-localparam [24:0] SPR_BASE = 25'h0600000;   // sprite region, per the map above
-localparam [24:0] SPR_END  = 25'h0E00000;
+// PER-GAME, and it has to be: the sprite region sits at a different address in
+// each map (Raiden II 0x600000, Raiden DX 0x880000) and the decrypted index is
+// the dword offset WITHIN the region, so a fixed window decrypts the wrong
+// bytes with the wrong key. Both regions are 8 MB, so only the base moves.
+// game_dx is valid here because the MRA sends index 1 before index 0.
+wire [24:0] SPR_BASE = SDR_SPRITES;
+wire [24:0] SPR_END  = SDR_SPRITES + 25'h0800000;
 
 wire        dl_word = ioctl_wr && (ioctl_index == 0);
 wire [24:0] dl_a    = ioctl_addr[24:0];
@@ -849,9 +863,18 @@ end
 // oracle for 200k vectors, but only on a board does this also cover the dword
 // pairing, the address arithmetic and the write ordering around it.
 //
-// Regenerate SPRITE_CRC whenever the ROM set changes -- it is specific to
-// raiden2 (the parent set), and a different revision will read FAIL here.
-localparam [31:0] SPRITE_CRC = 32'hD50A780F;
+// PER ROM SET. The checksum covers the DECRYPTED sprite region, so each game
+// has its own value and a fixed constant makes the other game report a failure
+// that says nothing about the hardware. Raiden DX read FAIL here purely for
+// that reason before this was split.
+//
+// Regenerate with:  python3 tools/sprite_crc.py <raiden2|raidendx> <dir-or-zip>
+// That tool mirrors the rolling checksum below and is validated by reproducing
+// the Raiden II value, so a new number is only as trustworthy as that check.
+// A different revision of either set will still read FAIL, as before.
+localparam [31:0] SPRITE_CRC_R2 = 32'hD50A780F;
+localparam [31:0] SPRITE_CRC_DX = 32'hB3517D70;
+wire       [31:0] SPRITE_CRC    = game_dx ? SPRITE_CRC_DX : SPRITE_CRC_R2;
 
 reg  [31:0] spr_crc;
 reg         spr_crc_done, spr_crc_pass;
@@ -1212,6 +1235,9 @@ wire sprprot_cs, tilebank_cs, copsort_cs, sound_cs, sprprot_rd_cs;
 // Self-test taps off the CPU subsystem.
 wire [19:0] dbg_addr;
 wire        dbg_mem_rd, dbg_intack, dbg_dma_unknown, dbg_cmd_unknown;
+// COP 0x7e05 (Raiden DX) writes the tile bank register itself.
+wire        cop_bank_we;
+wire  [7:0] cop_bank_data;
 wire        dbg_mem_wr;
 wire [15:0] dbg_data;
 wire        dbg_wram_we, dbg_wram_cop;
@@ -1297,6 +1323,7 @@ raiden2_main cpu
     .dbg_intack(dbg_intack), .dbg_dma_busy(dbg_dma_busy), .dbg_dma_unknown(dbg_dma_unknown),
     .dbg_stall_src(dbg_stall_src),
     .dbg_cmd_unknown(dbg_cmd_unknown),
+    .cop_bank_we(cop_bank_we), .cop_bank_data(cop_bank_data),
     .dbg_unknown_mode(dbg_unknown_mode), .dbg_unknown_valid(dbg_unknown_valid),
 
     .vram_rd_addr(map_addr), .vram_rd_data(map_data),
@@ -1327,6 +1354,7 @@ raiden2_video_regs video_regs
     .reg_addr(reg_addr), .reg_dout(reg_dout), .reg_be(reg_be),
     .reg_we(reg_we), .reg_rd(reg_rd),
     .crtc_cs(crtc_cs), .tilebank_cs(tilebank_cs), .copbank_cs(copbank_cs),
+    .cop_bank_we(cop_bank_we), .cop_bank_data(cop_bank_data),
     .reg_din(vr_reg_din), .reg_din_oe(vr_reg_din_oe),
 
     .bg_scroll_x(bg_scroll_x),   .bg_scroll_y(bg_scroll_y),

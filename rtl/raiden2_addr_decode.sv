@@ -64,9 +64,20 @@ module raiden2_addr_decode (
     wire in_reg_window = (addr[19:10] == 10'd1);
     wire [9:0] a = addr[9:0];
 
-    assign reg_cs = in_reg_window;
+    // Raiden DX carves 8 bytes of plain RAM back OUT of the register window:
+    //     map(0x004d0, 0x004d7).ram(); //???   (MAME raidendx_mem)
+    // The "???" is now answered: the CPU stores the foreground tile-bank byte
+    // here and COP command 0x7e05 reads it back (cop_regs[4] = 0x4D0 on every
+    // observed trigger) to write it into 0x470. With no backing store the
+    // byte is dropped, the COP reads stale RAM, and the DX canyon stage draws
+    // its overlay from bank 4 forever -- which shows as green placeholder
+    // tiles labelled with their own hex index. DX only; Raiden II leaves the
+    // range unmapped (open bus) and never touches it.
+    wire dx_scratch = game_dx && in_reg_window && (a[9:3] == 7'h1A);
 
-    assign ram_cs = (addr < 20'h20000) && !in_reg_window;
+    assign reg_cs = in_reg_window && !dx_scratch;
+
+    assign ram_cs = ((addr < 20'h20000) && !in_reg_window) || dx_scratch;
     assign rom_cs = (addr >= 20'h20000);
 
     // Raiden II: 0x20000-0x3FFFF is a 128K window over TWO banks, and
@@ -115,7 +126,10 @@ module raiden2_addr_decode (
         // MAME's later-map()-wins: the specific addresses must be tested
         // before the ranges that contain them (0x68E sits inside the SEI252
         // range; 0x6CA/0x6CB/0x6CC sit inside the sprite-prot range).
-        if (in_reg_window) begin
+        // dx_scratch excluded here too: MAME's .ram() overlay at 0x4D0-0x4D7
+        // overrides the COP device range it sits inside, so on DX those eight
+        // bytes must decode as RAM and nothing else.
+        if (in_reg_window && !dx_scratch) begin
             if      (a == 10'h28E || a == 10'h28F) sprbuf_cs     = 1'b1;  // 0x68E
             else if (a == 10'h2CA || a == 10'h2CB) prgbank_cs    = 1'b1;  // 0x6CA-0x6CB
             // MAME maps 0x6CC as a single BYTE (tile_bank_01_w takes a u8), so
