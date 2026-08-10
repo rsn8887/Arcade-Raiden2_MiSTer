@@ -1,4 +1,4 @@
-# Raiden II for MiSTer
+# Raiden II & Raiden DX for MiSTer
 
 An FPGA recreation of the arcade board for **Raiden II** (Seibu Kaihatsu, 1993)
 and **Raiden DX** (1994), for the MiSTer FPGA platform. One core runs both
