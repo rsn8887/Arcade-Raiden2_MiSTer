@@ -1,43 +1,55 @@
 # Raiden II for MiSTer
 
-An FPGA recreation of the arcade board for **Raiden II** (Seibu Kaihatsu, 1993),
-for the MiSTer FPGA platform.
+An FPGA recreation of the arcade board for **Raiden II** (Seibu Kaihatsu, 1993)
+and **Raiden DX** (1994), for the MiSTer FPGA platform. One core runs both
+games; the MRA tells it which board to be.
 
 ## Status
 
-**The game boots, plays, and has sound.** All 22 built-in self-test checks pass
-on real hardware (a DE10-Nano).
+**Both games boot, play at full speed, and have sound.** All 22 built-in
+self-test checks pass for both games on real hardware (a DE10-Nano).
 
-It is **not finished**. Some colours are still wrong in places — see
-[Known problems](#known-problems) below. Treat this as a work in progress
-rather than a finished core.
+Raiden II has had the most play-testing. Raiden DX became playable much more
+recently, so treat it as the newer of the two — see
+[Known problems](#known-problems) below.
 
 ## What the core covers
 
 | Part of the arcade board | State |
 |---|---|
-| V30 main CPU | Working |
-| Seibu COP (protection and maths chip) | Working — all 58 known commands match MAME |
-| SEI252 sprite chip | Working, including sprite decryption |
-| SEI0200 tilemap chip (4 layers) | Working |
+| V30 main CPU | Working, incl. Raiden DX's 2 MB banked program ROM |
+| Seibu COP (protection and maths chip) | Working — all 58 known commands match MAME, plus DX's own 0x7E05 |
+| SEI252 sprite chip | Working, including sprite decryption for both ROM sets |
+| SEI0200 tilemap chip (4 layers) | Working, incl. DX's swapped CRTC register layout |
 | SEI360 mixer (layer priority, transparency) | Working |
 | Sound — Z80, YM2151, two OKI6295 chips | Working |
 | Video timing | 320x240 at 55.4078 Hz |
-| SDRAM and ROM loading | Working, 14 MB verified on hardware |
+| SDRAM and ROM loading | Working — 14 MB (II) / 16.5 MB (DX) verified on hardware |
 
 ## Known problems
 
-These are the reasons the core is not finished yet:
+1. **Roughly one core load in four, the ROM data lands in SDRAM corrupted.**
+   The built-in `SDRAM VERIFY` check catches it, and it is visible as a band
+   of wrong graphics or wrong colours. It is decided at load time, not during
+   play — **if the picture looks wrong, load the core again.** Not yet
+   root-caused.
+2. **Raiden DX is newly playable and lightly tested.** Both games pass the
+   full self test, but DX has had hours of play-testing where Raiden II has
+   had days. DX also pushes the sprite chip closer to its per-line time
+   budget than any Raiden II scene measured so far.
 
-1. **A few colours sit at the wrong brightness.** The real game runs a fade
-   animation during attract mode that this core does not, so some palette
-   entries stay too dark or too bright. This does not change which colour
-   something is, only how light or dark. Issue #74.
-2. **Only Raiden II is supported.** There is one MRA. Other sets in the same
-   family, such as Raiden DX, are not covered.
+An earlier version of this README reported some palette entries staying at
+the wrong brightness (issue #74). That was disproved by measurement: the
+palette was compared word-for-word against MAME across 1,016 attract frames —
+2,080,768 comparisons including the flash-and-fade animations — with zero
+divergence. The report came from a comparison-script bug, not the core.
 
 Recently fixed and included in the current release:
 
+- Raiden DX support in full: per-game memory map and decryption window, the
+  DX-only COP command 0x7E05 (foreground tile banking), the swapped CRTC
+  register layout, and the 8-byte scratch RAM at 0x4D0 whose absence left
+  DX's canyon stage drawing placeholder tiles.
 - See-through effects (engine flames, water, clouds) came out blue or purple,
   because the 50% colour blend discarded its carry and any channel pair over
   255 wrapped to near zero.
@@ -51,14 +63,17 @@ Recently fixed and included in the current release:
 
 ## How to use it
 
-You need three things on your MiSTer's SD card:
+You need three things on your MiSTer's SD card (four for both games):
 
 1. `releases/Arcade-Raiden2_YYYYMMDD.rbf` → copy to `/media/fat/_Arcade/cores/`
    **and rename it to `Raiden2_YYYYMMDD.rbf`**, dropping the `Arcade-` prefix
-2. `releases/Raiden II.mra` → copy to `/media/fat/_Arcade/`
-3. `raiden2.zip` (a MAME ROM set) → copy to `/media/fat/games/mame/`
+2. `releases/Raiden II.mra` and/or `releases/Raiden DX.mra` → copy to
+   `/media/fat/_Arcade/`
+3. `raiden2.zip` and/or `raidendx.zip` (MAME ROM sets) → copy to
+   `/media/fat/games/mame/`
 
-Then pick **Raiden II** from the Arcade menu.
+Then pick **Raiden II** or **Raiden DX** from the Arcade menu. Both MRAs use
+the same core file.
 
 The rename is not optional. The `Arcade-` prefix is a *repository* naming
 convention; on the SD card the core must match the `<rbf>Raiden2</rbf>` field
@@ -67,6 +82,27 @@ installed core on a working system carries the prefix.
 
 **No ROMs are included here, and none ever will be.** The `.mra` file only
 lists which files it needs and checks them by CRC. You must supply your own.
+
+### Which ROM sets — check yours before reporting graphics bugs
+
+Raiden II exists in a dozen-plus regional revisions with different program
+ROMs. The MRAs match the **parent sets** from MAME 0.264 by per-file CRC32
+(listed inside each `.mra`). A different revision will load wrongly or not at
+all, and the classic symptom is **wrong colours or garbled graphics** — if
+you see that, or the built-in self test shows `SPRITE DECRYPT FAIL` /
+`SDRAM VERIFY FAIL` on every load, verify your sets first.
+
+The exact zips this core was verified against on hardware:
+
+```
+md5sum raiden2.zip  raidendx.zip
+af1c4608fbe251313ff2552a780f472c  raiden2.zip
+25532740c0f6f9942bac18e700a26d52  raidendx.zip
+```
+
+A zip with a different md5 is not automatically wrong (re-zipping the same
+files changes it) — the per-file CRC32s in the MRA are the real test — but a
+matching md5 means your set is exactly the one that was tested.
 
 ## Controls
 
