@@ -350,7 +350,7 @@ localparam CONF_STR = {
     // ever drives, so no coin could be inserted and no game could be started
     // while Fire/Bomb (bits 4/5) worked perfectly -- i.e. "no input does
     // anything". Keep this list and the MRA in step.
-    "J1,Fire,Bomb,Button 3,-,-,-,Start,Coin,Service,Pause;",
+    "J1,Fire,Bomb,Auto Fire,-,-,-,Start,Coin,Service,Pause;",
     "V,v",`BUILD_DATE
 };
 
@@ -1086,7 +1086,7 @@ raiden2_video_timing timing
 // keys share their codes with the keypad, so the extended bit is deliberately
 // ignored -- either one works, exactly as the reference cores do it.
 reg key_up = 0, key_down = 0, key_left = 0, key_right = 0;
-reg key_ctrl = 0, key_alt = 0, key_1 = 0, key_5 = 0;
+reg key_ctrl = 0, key_alt = 0, key_1 = 0, key_5 = 0, key_space = 0;
 
 always @(posedge clk_sys) begin
     reg old_state;
@@ -1101,6 +1101,7 @@ always @(posedge clk_sys) begin
             8'h11: key_alt   <= ps2_key[9];   // bomb
             8'h16: key_1     <= ps2_key[9];   // start 1
             8'h2E: key_5     <= ps2_key[9];   // coin
+            8'h29: key_space <= ps2_key[9];   // auto fire (DX button 3)
             default: ;
         endcase
     end
@@ -1121,7 +1122,7 @@ wire ana_up    = ana_y < -ANA_TH;
 // One merged word per player. Everything downstream indexes these instead of
 // joystick_0/1 directly, so a new input source only has to be added here.
 wire [15:0] j0 = joystick_0[15:0]
-               | {4'd0, key_5, key_1, 4'd0, key_alt, key_ctrl,
+               | {4'd0, key_5, key_1, 3'd0, key_space, key_alt, key_ctrl,
                   ana_up | key_up, ana_down | key_down,
                   ana_left | key_left, ana_right | key_right};
 wire [15:0] j1 = joystick_1[15:0];
@@ -1131,18 +1132,22 @@ wire [15:0] j1 = joystick_1[15:0];
 // list from bit 4 up -- INCLUDING its "-" placeholders, so Fire=4, Bomb=5,
 // Start=10, Coin=11, Service=12.
 //
-// P1_P2 layout is MAME's: P1 in bits 5:0, TWO UNUSED BITS, then P2 in 13:8.
-// Those two gap bits are not optional padding -- leaving them out made the
+// P1_P2 layout is MAME's: P1 in bits 6:0 and P2 in 14:8, with bits 7 and 15
+// unused. The gap bits are not optional padding -- leaving them out made the
 // concatenation 18 bits wide, and truncating it to 16 shifted every player 2
 // input down by two positions while player 1 looked perfectly fine.
-// Bits 14 and 6 are BUTTON3, which only Raiden DX has (INPUT_PORTS_START
-// raidendx adds PORT_BIT 0x4000 / 0x0040). Raiden II never reads them, so
-// wiring them unconditionally is harmless and saves a second input path.
+// Bits 6 and 14 are BUTTON3, which only Raiden DX has (INPUT_PORTS_START
+// raidendx adds PORT_BIT 0x0040 / 0x4000). On export DX sets the game holds
+// it as a ~15 Hz auto-shot -- the rate lives in the game code, not here.
+// Bit 6 was originally part of a 2'd0 gap, which left player 1's auto-fire
+// permanently released while player 2's worked; both are wired now.
+// Raiden II never reads them, so wiring them unconditionally is harmless
+// and saves a second input path.
 wire [15:0] p1p2_in = ~{
     1'd0, j1[6],                                                      // 15:14
     j1[5:4],                                                          // 13:12
     joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3],       // 11:8
-    2'd0,                                                             //  7:6
+    1'd0, j0[6],                                                      //  7:6
     j0[5:4],                                                          //  5:4
     j0[0], j0[1], j0[2], j0[3]                                        //  3:0
 };

@@ -6,8 +6,16 @@ games; the MRA tells it which board to be.
 
 ## Status
 
-**Both games boot, play at full speed, and have sound.** All 22 built-in
-self-test checks pass for both games on real hardware (a DE10-Nano).
+**Both games boot, play at full speed, and have sound.** On real hardware (a
+DE10-Nano) Raiden II passes all 22 built-in self-test checks, and Raiden DX
+passes 21 of 22.
+
+The exception is `CPU BOOT`, and it is a fault in the **test**, not the core.
+The check asks whether the CPU ever read the boot-entry window
+0x98000-0x98010 and gives up after 8 frames; Raiden DX does not touch that
+window until frame 836, so the check could never pass on DX however healthy
+the core. Its deadline is now 1200 frames. This had been reported as 22/22
+for both games, which was never true of DX.
 
 Raiden II has had the most play-testing. Raiden DX became playable much more
 recently, so treat it as the newer of the two — see
@@ -115,6 +123,7 @@ shmups behave the same way across cores:
 | D-pad or left analog stick | Arrow keys | Move |
 | A | Ctrl | Fire |
 | B | Alt | Bomb |
+| X | Space | Auto fire — Raiden DX only, held; the ~15 Hz repeat is in the game itself |
 | R | 1 | Start |
 | L | 5 | Insert coin |
 | Start | — | Pause |

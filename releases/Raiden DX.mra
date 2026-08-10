@@ -14,9 +14,13 @@
 
   <!-- Raiden DX adds a THIRD button that Raiden II does not have
        (INPUT_PORTS_START raidendx: PORT_BIT 0x0040 P1, 0x4000 P2).
+       On export-region boards -- this parent set is the UK one -- the game
+       software fires the main shot at ~15 Hz while it is held, so it is
+       named for what it does. MAME leaves it as plain BUTTON3; the Japanese
+       set does not implement the auto-shot at all.
        Names stay positional against the CONF_STR "J1,..." list in
        Raiden2.sv, dashes included. -->
-  <buttons names="Fire,Bomb,Button 3,-,-,-,Start,Coin,-,Pause"
+  <buttons names="Fire,Bomb,Auto Fire,-,-,-,Start,Coin,-,Pause"
            default="A,B,X,R,L,Start"/>
 
   <!-- DIP layout is raiden2's (PORT_INCLUDE) with SW2:5 and SW2:6 changed
