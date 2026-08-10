@@ -69,3 +69,6 @@ obj_dir/
 docs/
 /*.md
 !/README.md
+
+# Build logs from ad-hoc compiles (compile.log is Quartus' own, above)
+compile_*.log

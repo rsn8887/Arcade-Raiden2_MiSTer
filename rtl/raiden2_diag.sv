@@ -16,7 +16,17 @@
 //============================================================================
 
 module raiden2_diag #(
-    parameter int SETTLE_FRAMES = 8
+    parameter int SETTLE_FRAMES = 8,
+    // CPU BOOT gets its own, much longer deadline. 8 frames (0.14 s) is fine
+    // for events that happen every frame, but the boot-entry window is touched
+    // ONCE, early, and only after the game has got going: a MAME read tap
+    // (tools/, 2026-08-10) puts Raiden DX's first access to 0x98000-0x98010 at
+    // frame 836, i.e. ~100x past the 8-frame deadline. The check therefore
+    // reported FAIL on every DX run no matter how healthy the core -- a test
+    // bug that cost a board investigation. 1200 frames (~21 s) clears DX's 836
+    // with margin. The counter below is 16-bit for this reason; an 8-bit one
+    // silently saturates at 255 and reintroduces the same false failure.
+    parameter int BOOT_SETTLE_FRAMES = 1200
 ) (
     input  logic        clk,
     input  logic        reset,          // system reset
@@ -99,12 +109,13 @@ module raiden2_diag #(
     //------------------------------------------------------------------
     // Settle timer: frames since the core was last released.
     //------------------------------------------------------------------
-    logic [7:0] frames;
-    wire        settled = (frames >= SETTLE_FRAMES[7:0]);
+    logic [15:0] frames;
+    wire         settled      = (frames >= SETTLE_FRAMES[15:0]);
+    wire         boot_settled = (frames >= BOOT_SETTLE_FRAMES[15:0]);
 
     always_ff @(posedge clk) begin
-        if (reset || core_reset) frames <= 8'd0;
-        else if (vblank_rise && !settled) frames <= frames + 8'd1;
+        if (reset || core_reset) frames <= 16'd0;
+        else if (vblank_rise && !boot_settled) frames <= frames + 16'd1;
     end
 
     //------------------------------------------------------------------
@@ -167,6 +178,12 @@ module raiden2_diag #(
     //------------------------------------------------------------------
     function automatic [1:0] verdict(input logic hit);
         verdict = hit ? ST_PASS : (settled ? ST_FAIL : ST_WAIT);
+    endfunction
+
+    // Same, on the long deadline -- for one-shot events that only occur once
+    // the game is well under way.
+    function automatic [1:0] verdict_slow(input logic hit);
+        verdict_slow = hit ? ST_PASS : (boot_settled ? ST_FAIL : ST_WAIT);
     endfunction
 
     logic [1:0] st_pll, st_rom, st_sdram;
@@ -254,7 +271,7 @@ module raiden2_diag #(
         verdict(hit_dma15),                     //  7 COP DMA PALETTE
         verdict(hit_dma14),                     //  6 COP DMA TILEMAP
         verdict(hit_irq),                       //  5 VBLANK IRQ
-        verdict(hit_boot),                      //  4 CPU BOOT
+        verdict_slow(hit_boot),                 //  4 CPU BOOT
         verdict(fetch_count >= 8'd16),          //  3 CPU FETCH
         st_sdram,                               //  2 SDRAM VERIFY
         st_rom,                                 //  1 ROM LOAD
