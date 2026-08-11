@@ -36,6 +36,12 @@
     <dip name="SW2:5 (unused)" bits="12" ids="On,Off"/>
     <dip name="SW2:6 (unused)" bits="13" ids="On,Off"/>
     <dip name="Demo Sounds" bits="14" ids="Off,On"/>
+    <!-- SW2:8, the board's own service/test menu:
+           PORT_SERVICE( 0x8000, IP_ACTIVE_LOW ) PORT_DIPLOCATION("SW2:!8")
+         inherited by raidendx through PORT_INCLUDE. Active low like every
+         other switch here, so "Off" is the FF default and "On" enters the
+         test menu on the next reset. -->
+    <dip name="Test Mode" bits="15" ids="On,Off"/>
   </switches>
 
   <!-- ============================================================

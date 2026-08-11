@@ -33,6 +33,11 @@
     <dip bits="10,11" ids="1,4,2,3" name="Lives"/>
     <dip bits="12,13" ids="No Extend,1000000 3000000,400000 1000000,200000 500000" name="Bonus Life"/>
     <dip bits="14"    ids="Off,On" name="Demo Sounds"/>
+    <!-- SW2:8, the board's own service/test menu:
+           PORT_SERVICE( 0x8000, IP_ACTIVE_LOW ) PORT_DIPLOCATION("SW2:!8")
+         Active low like every other switch here, so "Off" is the FF default
+         and "On" enters the test menu on the next reset. -->
+    <dip bits="15"    ids="On,Off" name="Test Mode"/>
   </switches>
 
   <!-- ============================================================

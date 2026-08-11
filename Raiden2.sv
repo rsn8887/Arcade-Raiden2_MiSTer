@@ -1169,44 +1169,20 @@ wire [15:0] system_in = ~{
 // the board's active-low form.
 wire [15:0] dsw_in = {dsw_bytes[1], dsw_bytes[0]};
 
-// Timing matters more than it looks. The first cut fired at 5 s / 6 s, but the
-// attract sequence needs ~20 s (frame ~1230) just to reach its first fade, so
-// the game was still initialising: the coin registered and START1 was asserted
-// correctly, yet the game sat on a credit screen with the sprite-list builder
-// at 0xA4468 never called (0 writes to 9F9C/9D20/0878 across 1384 frames).
-// That produced a wrong "gameplay kills sprites" conclusion -- see HANDOFF #66.
-// 30 s / 32 s puts both presses well after attract is up and running.
-localparam [31:0] AUTO_COIN_AT  = 32'd1_920_000_000;  // 30 s: insert coin
-localparam [31:0] AUTO_COIN_OFF = 32'd1_952_000_000;  // 30.5 s: release
-localparam [31:0] AUTO_STRT_AT  = 32'd2_048_000_000;  // 32 s: press start
-localparam [31:0] AUTO_STRT_OFF = 32'd2_080_000_000;  // 32.5 s: release
-
-// DIP 15 arms the injector; DIP 14 selects COIN-ONLY (no START press).
-// #66: sprites stop being drawn once a coin is inserted, reproduced at two
-// timings. Separating coin from start halves the search space -- if sprites die
-// on the COIN ALONE, the fault is in the credit/attract transition rather than
-// the game-start path.
-//   FF,FF = injector off        FF,7F = coin + start
-//   FF,3F = coin only (bit14 low as well)
-wire        auto_en   = ~dsw_in[15];
-// COIN-ONLY EXPERIMENT (#66). Do NOT gate this on a DIP the MRA defines:
-// bit 14 is "Demo Sounds", so MiSTer manages it and FF,3F never armed the
-// injector at all -- the run looked like a control. Bit 15 is undefined in the
-// MRA and passes through, which is why FF,7F works. So START is hardcoded off
-// here and the experiment is selected by WHICH BITSTREAM is loaded.
-wire        coin_only = 1'b1;
-reg  [31:0] auto_ctr;
-always @(posedge clk_sys) if (reset) auto_ctr <= 32'd0;
-                          else if (auto_ctr != 32'hFFFFFFFF) auto_ctr <= auto_ctr + 32'd1;
-
-wire auto_coin  = auto_en && (auto_ctr >= AUTO_COIN_AT) && (auto_ctr < AUTO_COIN_OFF);
-wire auto_start = auto_en && !coin_only && (auto_ctr >= AUTO_STRT_AT) && (auto_ctr < AUTO_STRT_OFF);
-
-// START1 is SYSTEM bit 0 (active low), so a press is a ZERO. Gated copy so
-// the auto-start pulse joins the real button without a forward reference --
-// using auto_start before its declaration would have created a 1-bit
-// IMPLICIT NET, the same class as the dangling sprprot_cs that caused #61.
-wire [15:0] system_gated = system_in & ~{15'd0, auto_start};
+// DSW bit 15 is the board's TEST MODE switch, SW2:8 -- MAME raiden2:
+//   PORT_SERVICE( 0x8000, IP_ACTIVE_LOW ) PORT_DIPLOCATION("SW2:!8")
+// and raidendx inherits it through PORT_INCLUDE. It reaches the game as an
+// ordinary DSW bit, so both MRAs simply expose it and nothing here has to
+// decode it.
+//
+// It used to be squatted on by a headless auto coin/start injector, added to
+// investigate #66 on the strength of "bit 15 is undefined in the MRA and
+// passes through". That was true of the MRA at the time and never true of the
+// hardware, so arming test mode would also have shoved a coin in 30 s later.
+// The injector is removed rather than moved: #66 no longer reproduces (a board
+// with 8 coins registered reports SPRITE FETCH CH2 PASS, 2026-08-10), and it
+// is in git history if it is ever wanted again.
+wire [15:0] system_gated = system_in;
 
 
 wire [12:0] map_addr;
@@ -1615,21 +1591,8 @@ wire [15:0] snd_rom_ofs = snd_dl_off[16:1];
 
 // coin_r at 0x4013: bit 0 COIN1, bit 1 COIN2, active low, everything else
 // idle high (SEIBU_COIN_INPUTS_INVERT).
-// ---- CLI-testable auto coin/start (debug) -----------------------------
-// Gameplay has never been exercised: every result so far is attract mode, and
-// nobody can press a button over SSH. This pulses COIN1 and then START1 on a
-// timer so a headless capture can answer "does a credit register, does a game
-// start, and does COP MODES/CMDS KNOWN survive gameplay" -- the last of which
-// is what says whether cop_sort / PRNG are actually needed.
-//
-// Driven by DIP switch 15 (dsw_in[15], active low like the rest) so it is
-// OFF unless deliberately selected in the MRA, and can never fire on a normal
-// core. Timing is in clk_sys ticks at 64 MHz.
-
-// coin_r at 0x4013: bit 0 COIN1, bit 1 COIN2, active low, everything else
-// idle high (SEIBU_COIN_INPUTS_INVERT).
 // Coin is joystick bit 11 (see the CONF_STR note above), not bit 7.
-wire  [7:0] snd_coin_in = ~{6'd0, j1[11], j0[11] | auto_coin};
+wire  [7:0] snd_coin_in = ~{6'd0, j1[11], j0[11]};
 
 // Credit counter, streamed over the UART. Without this a "did the coin work"
 // capture is guesswork: 0x9F?? credits live in work RAM, but the simplest

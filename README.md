@@ -136,6 +136,20 @@ The left analog stick works alongside the d-pad without any setup, and the
 keyboard layout is the usual arcade one, so muscle memory from MAME carries
 over. All gamepad buttons can be remapped in the MiSTer menu.
 
+## The arcade board's own service menu
+
+Separate from the core's self test below, and useful for anyone comparing
+against a real PCB: the game's **DIAGNOSTIC MODE**, showing the live DIP
+readout and a per-player input test.
+
+It is not a button. On the real board it is DIP **SW2:8**, so turn on
+**Test Mode** in the MiSTer DIP menu and reset. Both games have it.
+
+MiSTer remembers DIP settings per ROM set in `/media/fat/config/<setname>.CFG`,
+and those saved settings win over the defaults in the `.mra` — so change it in
+the menu rather than by editing the MRA, or the edit will look like it did
+nothing.
+
 ## Built-in self test
 
 The core can run a self test that checks 22 things — the CPU, memory, video
