@@ -71,22 +71,26 @@ Recently fixed and included in the current release:
 
 ## How to use it
 
-You need three things on your MiSTer's SD card (four for both games):
+Copy the files across **keeping their names exactly as they are** — no
+renaming — so your SD card ends up like this:
 
-1. `releases/Arcade-Raiden2_YYYYMMDD.rbf` → copy to `/media/fat/_Arcade/cores/`
-   **and rename it to `Raiden2_YYYYMMDD.rbf`**, dropping the `Arcade-` prefix
-2. `releases/Raiden II.mra` and/or `releases/Raiden DX.mra` → copy to
-   `/media/fat/_Arcade/`
-3. `raiden2.zip` and/or `raidendx.zip` (MAME ROM sets) → copy to
-   `/media/fat/games/mame/`
+```
+/media/fat/_Arcade/cores/Raiden2_20260810.rbf   <- from releases/
+/media/fat/_Arcade/Raiden II.mra                <- from releases/
+/media/fat/_Arcade/Raiden DX.mra                <- from releases/
+/media/fat/games/mame/raiden2.zip               <- your own MAME ROM set
+/media/fat/games/mame/raidendx.zip              <- your own MAME ROM set
+```
 
 Then pick **Raiden II** or **Raiden DX** from the Arcade menu. Both MRAs use
-the same core file.
+the same core file, so you only need the one `.rbf`.
 
-The rename is not optional. The `Arcade-` prefix is a *repository* naming
-convention; on the SD card the core must match the `<rbf>Raiden2</rbf>` field
-in the MRA. The MiSTer updater does this rename automatically, which is why no
-installed core on a working system carries the prefix.
+**If choosing the game just bumps you back up one menu level**, MiSTer could
+not find the core, and the filename is almost always why. Both MRAs ask for
+`<rbf>Raiden2</rbf>`, so the file in `_Arcade/cores/` must begin `Raiden2`.
+Releases here are named to match; earlier ones carried an `Arcade-` prefix
+(a *repository* convention, which the MiSTer updater strips automatically)
+and those did need renaming by hand.
 
 **No ROMs are included here, and none ever will be.** The `.mra` file only
 lists which files it needs and checks them by CRC. You must supply your own.
