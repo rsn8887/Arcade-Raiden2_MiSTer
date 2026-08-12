@@ -48,7 +48,15 @@ set_global_assignment -name ECO_OPTIMIZE_TIMING ON
 set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
-set_global_assignment -name SEED 8
+# Fitter seed. This is a placement lottery ticket, not a design parameter: hold
+# on the clk_ram -> clk_sys SDRAM read crossing is marginal design-wide (six
+# paths sat under 0.1 ns hold slack on 2026-08-11), so which seed closes shifts
+# whenever the design changes size. Seed 8 closed at +0.184 until the Raiden II
+# auto fire logic moved placement and it went to -0.451, on paths unrelated to
+# that logic (sdram ch1_dout -> sdram_bist run_sum). Re-sweep the seed when a
+# build fails hold; do NOT relax the SDC exceptions to make it go green, they
+# describe a real crossing.
+set_global_assignment -name SEED 3
 
 set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 
