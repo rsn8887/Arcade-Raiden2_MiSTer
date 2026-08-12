@@ -51,7 +51,7 @@ class Report:
         print(f"[{tag}] {text}")
 
     def head(self, text):
-        print(f"\n{text}\n" + "-" * len(text))
+        print(f"\n{text}\n" + "-" * min(len(text), 60))
 
 
 def md5_of(path):
@@ -94,17 +94,26 @@ def write_manifest(rep):
     rep.line(OK, f"wrote {os.path.relpath(MANIFEST, REPO)} ({len(names)} bitstream(s))")
 
 
-def check_bitstreams(rep):
-    rep.head("Bitstream")
+def check_bitstreams(rep, where):
+    rep.head(f"Bitstream ({where})")
     want = read_manifest()
-    names = sorted(n for n in os.listdir(RELEASES) if n.lower().endswith(".rbf"))
+    if not os.path.isdir(where):
+        rep.line(BAD, f"{where}: no such directory")
+        return
+    names = sorted(n for n in os.listdir(where) if n.lower().endswith(".rbf"))
     if not names:
-        rep.line(BAD, "no .rbf found in releases/")
+        rep.line(BAD, f"no .rbf found in {where}")
         return
     if not want:
         rep.line(WARN, "no releases/md5sums.txt -- run with --update to create it")
+    known = [n for n in names if n in want]
+    if want and not known:
+        rep.line(WARN, f"none of the {len(names)} .rbf here are Raiden2 releases "
+                       f"-- checking them all against the manifest anyway")
     for n in names:
-        path = os.path.join(RELEASES, n)
+        if want and n not in want and len(names) > 4:
+            continue          # a full MiSTer cores/ dir: skip unrelated cores
+        path = os.path.join(where, n)
         size = os.path.getsize(path)
         got = md5_of(path)
         if n not in want:
@@ -220,6 +229,11 @@ def main():
     ap.add_argument("--roms", default=RELEASES,
                     help="directory holding raiden2.zip / raidendx.zip "
                          "(default: releases/; on a MiSTer: /media/fat/games/mame)")
+    ap.add_argument("--install", metavar="DIR",
+                    help="check the .rbf actually installed here rather than the "
+                         "one in releases/ -- on a MiSTer that is "
+                         "/media/fat/_Arcade/cores. This is the copy that has to "
+                         "be good, so check it if the core will not start")
     ap.add_argument("--update", action="store_true",
                     help="rewrite releases/md5sums.txt from the current bitstreams")
     args = ap.parse_args()
@@ -229,7 +243,7 @@ def main():
         write_manifest(rep)
         return 1 if rep.failed else 0
 
-    check_bitstreams(rep)
+    check_bitstreams(rep, args.install or RELEASES)
 
     mras = sorted(os.path.join(RELEASES, n) for n in os.listdir(RELEASES)
                   if n.lower().endswith(".mra"))

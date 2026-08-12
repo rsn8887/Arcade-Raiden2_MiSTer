@@ -125,9 +125,17 @@ itself, and that restart is what drops you back at the menu. Check the file
 itself rather than its name:
 
 ```
-tools/check_files.py                 # checks the bitstream and both MRAs
-tools/check_files.py --roms /media/fat/games/mame   # ...and your ROM sets
+tools/check_files.py                    # check what you downloaded
+tools/check_files.py --install /media/fat/_Arcade/cores \
+                     --roms    /media/fat/games/mame    # check what is installed
 ```
+
+The script needs nothing but Python 3 and the files themselves — no network,
+no ssh, no MiSTer. Run it on the machine you downloaded to, or copy `tools/`
+and `releases/` onto the SD card and run it on the MiSTer itself (which ships
+Python 3.9). **If the core will not start, check the installed copy**, not the
+download: `--install` points at the `.rbf` that actually has to be good, and a
+file can survive the download and still be damaged by the copy to SD.
 
 The expected hashes live in `releases/md5sums.txt`, so plain
 `md5sum -c md5sums.txt` from inside `releases/` works too if you would rather
