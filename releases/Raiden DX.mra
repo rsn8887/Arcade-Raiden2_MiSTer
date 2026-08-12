@@ -14,12 +14,20 @@
 
   <!-- Raiden DX adds a THIRD button that Raiden II does not have
        (INPUT_PORTS_START raidendx: PORT_BIT 0x0040 P1, 0x4000 P2).
-       On export-region boards -- this parent set is the UK one -- the game
+       On export-region boards (this parent set is the UK one) the game
        software fires the main shot at ~15 Hz while it is held, so it is
        named for what it does. MAME leaves it as plain BUTTON3; the Japanese
        set does not implement the auto-shot at all.
        Names stay positional against the CONF_STR "J1,..." list in
-       Raiden2.sv, dashes included. -->
+       Raiden2.sv, dashes included.
+       Keep double hyphens out of these comments, and never quote a comment
+       terminator inside one. XML forbids a double hyphen in a comment body,
+       so xmllint and other strict tools reject the whole file; quoting a
+       terminator ends the comment early and spills the rest into the
+       document. MiSTer catches neither, because sxmlc scans only for the
+       literal terminator and accepts whatever precedes it. A pair of
+       hyphens in this very comment left the released MRA invalid XML from
+       2026-08-10 to 2026-08-11, working on hardware the whole time. -->
   <buttons names="Fire,Bomb,Auto Fire,-,-,-,Start,Coin,-,Pause"
            default="A,B,X,R,L,Start"/>
 

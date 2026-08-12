@@ -13,12 +13,22 @@
   <num_buttons>2</num_buttons>
   <!-- Names are positional and must mirror the CONF_STR "J1,..." list in
        Raiden2.sv, dashes included, or the OSD labels drift off the joystick
-       bits. Defaults map to the non-dash names in order, so this reads
-       Fire=A, Bomb=B, Start=R, Coin=L, Pause=Start.
+       bits. Defaults map to the non-dash names in order (joymapping.cpp
+       skips a "-" without advancing the default index), so this reads
+       Fire=A, Bomb=B, Auto Fire=X, Start=R, Coin=L, Pause=Start.
 
        That is the Arcade-Cave_MiSTer convention (Start on R, Coin on L,
-       Pause on Start), which previously left Coin and Pause unmapped here. -->
-  <buttons names="Fire,Bomb,-,-,-,-,Start,Coin,-,Pause" default="A,B,R,L,Start"/>
+       Pause on Start), which previously left Coin and Pause unmapped here.
+
+       Auto Fire is NOT on the Raiden II board. num_buttons stays 2 because
+       that field describes the PCB, and MAME has bit 0x0040 as IPT_UNUSED
+       for raiden2 where raidendx PORT_MODIFYs it to BUTTON3. The button is
+       here because the core synthesises the repeat that the DX program
+       provides in software; see the auto fire block in Raiden2.sv. Held,
+       not toggled, and identical in layout to Raiden DX so the two games
+       play the same way. -->
+  <buttons names="Fire,Bomb,Auto Fire,-,-,-,Start,Coin,-,Pause"
+           default="A,B,X,R,L,Start"/>
 
   <!-- DIP layout from MAME raiden2.cpp INPUT_PORTS_START(raiden2).
        All switches are active low, so the default of FF,FF is
@@ -55,9 +65,14 @@
          0x600000  sprites    8 MB    (decrypted in RTL by r2crypt as it
                                       is fetched, not by the loader)
 
-       Total 14 MB. Note the background ROMs: MAME currently names them
-       bg-1.u075 / bg-2.u0714 while many sets on disk use the opposite
-       u-numbers. The CRCs below are authoritative; e61ad38e goes first.
+       Total 14 MB. Note the background ROMs: the u-numbers read as though
+       they were transposed, but this is what MAME 0.264 has. Verified
+       against the mame0264 tag of raiden2.cpp and against the set itself:
+       bg-1 is u0714, bg-2 is u075, and e61ad38e goes first.
+       These names were transposed until 2026-08-11, which went unnoticed
+       because MiSTer resolves a part by CRC32 first and only falls back to
+       the filename (file_io.cpp FileOpenZip), so the correct CRCs kept
+       loading the right data under the wrong names.
        ============================================================ -->
   <!-- Game select, read by the core at ioctl index 1, and it MUST come BEFORE
        index 0. Sprites are decrypted inline as the index-0 stream arrives and
@@ -99,8 +114,8 @@
     <part name="raiden_2_pcm.u1018" crc="8cf0d17e"/>
 
     <!-- tiles 0x200000, 4 MB -->
-    <part name="raiden_2_seibu_bg-1.u075" crc="e61ad38e"/>
-    <part name="raiden_2_seibu_bg-2.u0714" crc="a694a4bb"/>
+    <part name="raiden_2_seibu_bg-1.u0714" crc="e61ad38e"/>
+    <part name="raiden_2_seibu_bg-2.u075" crc="a694a4bb"/>
 
     <!-- sprites 0x600000, 8 MB: ROM_REGION32_LE + ROM_LOAD32_WORD.
          obj-1/obj-2 are the low/high 16-bit halves of each dword for the
