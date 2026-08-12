@@ -1101,7 +1101,8 @@ always @(posedge clk_sys) begin
             8'h11: key_alt   <= ps2_key[9];   // bomb
             8'h16: key_1     <= ps2_key[9];   // start 1
             8'h2E: key_5     <= ps2_key[9];   // coin
-            8'h29: key_space <= ps2_key[9];   // auto fire (DX button 3)
+            8'h29: key_space <= ps2_key[9];   // auto fire (both games; see
+                                              // the auto fire block below)
             default: ;
         endcase
     end
@@ -1127,6 +1128,31 @@ wire [15:0] j0 = joystick_0[15:0]
                   ana_left | key_left, ana_right | key_right};
 wire [15:0] j1 = joystick_1[15:0];
 
+// Raiden II auto fire. THIS IS THE ONE BEHAVIOUR IN THIS CORE THAT THE ARCADE
+// BOARD DOES NOT HAVE, and it is deliberate: Raiden DX's program repeats the
+// shot itself while BUTTON3 is held, Raiden II's program never reads BUTTON3
+// at all, so on Raiden II the button is wired to nothing and pressing it does
+// nothing. Synthesising the repeat here gives the two games the same control
+// layout. Raiden DX is excluded (~game_dx) because doubling its own repeat up
+// with this one would fight the game's timing rather than help it.
+//
+// The game samples its inputs once per frame, so a frame counter is the only
+// rate that means anything; vblank_rise is one pulse per frame. Two frames
+// held and two released is 55.4078/4 = 13.85 Hz, the closest a frame-aligned
+// divider gets to the ~15 Hz the DX program produces.
+//
+// The counter is cleared while the button is up, so ~cnt[1] is already true on
+// the frame the button goes down and the first shot leaves on that frame
+// rather than up to two frames later. One counter per player, so player 2
+// pressing does not restart player 1's phase.
+reg [1:0] p1_af_cnt = 2'd0, p2_af_cnt = 2'd0;
+always @(posedge clk_sys) if (vblank_rise) begin
+    p1_af_cnt <= j0[6] ? p1_af_cnt + 1'd1 : 2'd0;
+    p2_af_cnt <= j1[6] ? p2_af_cnt + 1'd1 : 2'd0;
+end
+wire p1_autofire = ~game_dx & j0[6] & ~p1_af_cnt[1];
+wire p2_autofire = ~game_dx & j1[6] & ~p2_af_cnt[1];
+
 // Inputs are active low on the board. MiSTer joystick bits are
 // 0=right 1=left 2=down 3=up, then the buttons named by the CONF_STR "J1,..."
 // list from bit 4 up -- INCLUDING its "-" placeholders, so Fire=4, Bomb=5,
@@ -1145,10 +1171,10 @@ wire [15:0] j1 = joystick_1[15:0];
 // and saves a second input path.
 wire [15:0] p1p2_in = ~{
     1'd0, j1[6],                                                      // 15:14
-    j1[5:4],                                                          // 13:12
+    j1[5], j1[4] | p2_autofire,                                       // 13:12
     joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3],       // 11:8
     1'd0, j0[6],                                                      //  7:6
-    j0[5:4],                                                          //  5:4
+    j0[5], j0[4] | p1_autofire,                                       //  5:4
     j0[0], j0[1], j0[2], j0[3]                                        //  3:0
 };
 
