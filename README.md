@@ -7,15 +7,16 @@ games; the MRA tells it which board to be.
 ## Status
 
 **Both games boot, play at full speed, and have sound.** On real hardware (a
-DE10-Nano) Raiden II passes all 22 built-in self-test checks, and Raiden DX
-passes 21 of 22.
+DE10-Nano) **both** now pass all 22 built-in self-test checks, verified on
+2026-08-12 against build `11195503`.
 
-The exception is `CPU BOOT`, and it is a fault in the **test**, not the core.
-The check asks whether the CPU ever read the boot-entry window
-0x98000-0x98010 and gives up after 8 frames; Raiden DX does not touch that
-window until frame 836, so the check could never pass on DX however healthy
-the core. Its deadline is now 1200 frames. This had been reported as 22/22
-for both games, which was never true of DX.
+Raiden DX used to fail `CPU BOOT`, and that was a fault in the **test**, not
+the core. The check asks whether the CPU ever read the boot-entry window
+0x98000-0x98010 and used to give up after 8 frames; Raiden DX does not touch
+that window until frame 836, so the check could never pass on DX however
+healthy the core. Its deadline is now 1200 frames and DX passes. This had
+been reported as 22/22 for both games before that fix, which was not true of
+DX at the time.
 
 Raiden II has had the most play-testing. Raiden DX became playable much more
 recently, so treat it as the newer of the two — see
@@ -36,11 +37,24 @@ recently, so treat it as the newer of the two — see
 
 ## Known problems
 
-1. **Roughly one core load in four, the ROM data lands in SDRAM corrupted.**
-   The built-in `SDRAM VERIFY` check catches it, and it is visible as a band
-   of wrong graphics or wrong colours. It is decided at load time, not during
-   play — **if the picture looks wrong, load the core again.** Not yet
-   root-caused.
+1. **ROM data landing in SDRAM corrupted at load time — believed fixed in the
+   current release, but not proven gone.** This used to happen on roughly one
+   core load in four, caught by the built-in `SDRAM VERIFY` check and visible
+   as a band of wrong graphics or wrong colours.
+
+   The likely cause was never in the SDRAM logic: the previous release
+   **failed hold timing on the SDRAM read crossing**, at -0.338 ns on
+   `sdram|ch1_dout[13]`, with the ch2 (sprite) and ch4 (OKI) return paths only
+   +0.035 and +0.050 behind it. The current release closes that whole crossing
+   at +0.242 or better.
+
+   Measured on a DE10-Nano: **38 consecutive core loads with zero failures.**
+   Under the old one-in-four rate that run has probability ~1 in 56,000, so
+   the old rate is ruled out. What 38 clean loads *cannot* do is prove the
+   fault is gone — they bound it at roughly 7% or below with 95% confidence,
+   so a low-single-digit rate would have survived this test unnoticed. It is
+   also one board at one temperature. **If the picture still looks wrong,
+   load the core again, and please report it.**
 2. **Raiden DX is newly playable and lightly tested.** Both games pass the
    full self test, but DX has had hours of play-testing where Raiden II has
    had days. DX also pushes the sprite chip closer to its per-line time
@@ -71,11 +85,10 @@ Recently fixed and included in the current release:
 
 ## How to use it
 
-Copy the files across **keeping their names exactly as they are** — no
-renaming — so your SD card ends up like this:
+Copy the files across so your SD card ends up like this:
 
 ```
-/media/fat/_Arcade/cores/Raiden2_20260810.rbf   <- from releases/
+/media/fat/_Arcade/cores/Raiden2_20260811.rbf   <- from releases/
 /media/fat/_Arcade/Raiden II.mra                <- from releases/
 /media/fat/_Arcade/Raiden DX.mra                <- from releases/
 /media/fat/games/mame/raiden2.zip               <- your own MAME ROM set
@@ -85,12 +98,52 @@ renaming — so your SD card ends up like this:
 Then pick **Raiden II** or **Raiden DX** from the Arcade menu. Both MRAs use
 the same core file, so you only need the one `.rbf`.
 
-**If choosing the game just bumps you back up one menu level**, MiSTer could
-not find the core, and the filename is almost always why. Both MRAs ask for
-`<rbf>Raiden2</rbf>`, so the file in `_Arcade/cores/` must begin `Raiden2`.
-Releases here are named to match; earlier ones carried an `Arcade-` prefix
-(a *repository* convention, which the MiSTer updater strips automatically)
-and those did need renaming by hand.
+**The core filename does not have to be exact, and renaming is never
+necessary.** Both MRAs ask for `<rbf>Raiden2</rbf>`, and MiSTer's lookup
+(`get_rbf` in `support/arcade/mra_loader.cpp`) accepts any file in
+`_Arcade/cores/` beginning `Raiden2` *or* `Arcade-Raiden2`, matched
+case-insensitively and followed by a `.` or a `_`. So `Raiden2.rbf`,
+`Raiden2_20260811.rbf` and `Arcade-Raiden2_20260811.rbf` all work. An
+earlier version of this README said the `Arcade-` prefixed releases had to
+be renamed by hand; that was wrong, and it sent people chasing filenames
+over a fault that was never in the name. If several files match, MiSTer
+takes the greatest by byte-wise string comparison rather than the newest,
+so delete superseded copies instead of leaving them side by side.
+
+**If choosing the game just bumps you back to the menu**, read what is on
+screen, because MiSTer tells these cases apart:
+
+| What you see | What it means |
+|---|---|
+| `No rbf found!`, about 2 seconds | Nothing in `_Arcade/cores/` matched. Check the folder exists and holds the `.rbf`. |
+| `<name> Not Found`, about 5 seconds | A file matched but would not open. Permissions, or a bad card. |
+| **No message at all, just a brief flash** | The FPGA rejected the bitstream: the `.rbf` is corrupt or truncated. |
+
+The last case is the one that masquerades as a missing core. It is silent by
+design: MiSTer logs the failure only to its console and then restarts
+itself, and that restart is what drops you back at the menu. Check the file
+itself rather than its name:
+
+```
+tools/check_files.py                 # checks the bitstream and both MRAs
+tools/check_files.py --roms /media/fat/games/mame   # ...and your ROM sets
+```
+
+The expected hashes live in `releases/md5sums.txt`, so plain
+`md5sum -c md5sums.txt` from inside `releases/` works too if you would rather
+not run the script. A short or differently-hashed file means the download went
+wrong: take the raw binary from `releases/`, not a page saved from GitHub's
+file viewer.
+
+An earlier version of this README hard-coded the size and md5 here, and they
+went stale the moment the bitstream was rebuilt — so it told people with a
+perfectly good download that it was corrupt. That is why the numbers now live
+in a generated manifest instead.
+
+**ROM problems cannot cause a bounce back to the menu.** MiSTer programs the
+FPGA and restarts itself *before* it reads a single byte of ROM, so a
+missing zip, a wrong revision or a bad CRC always shows up as a running core
+with an error box over it, never as a return to the menu.
 
 **No ROMs are included here, and none ever will be.** The `.mra` file only
 lists which files it needs and checks them by CRC. You must supply your own.
@@ -112,9 +165,28 @@ af1c4608fbe251313ff2552a780f472c  raiden2.zip
 25532740c0f6f9942bac18e700a26d52  raidendx.zip
 ```
 
-A zip with a different md5 is not automatically wrong (re-zipping the same
-files changes it) — the per-file CRC32s in the MRA are the real test — but a
-matching md5 means your set is exactly the one that was tested.
+A zip with a different md5 is not automatically wrong — **most correct sets
+will not match these**, and that is expected. The `raiden2.zip` above is a
+rebuilt parent-only set of 13 files, not a stock MAME zip, and it carries the
+two background ROMs under transposed u-numbers (`bg-1.u075` / `bg-2.u0714`
+where MAME 0.264 has `bg-1.u0714` / `bg-2.u075`). It loads anyway, because
+MiSTer resolves each part by CRC32 first and only falls back to the filename.
+
+**The per-file CRC32s in the MRA are the real test**, and they are what the
+MRAs are written against. Use the md5s only to confirm you have byte-for-byte
+the set the hardware testing was done on.
+
+To check a set properly rather than by md5, run:
+
+```
+tools/check_files.py --roms /path/to/your/mame/roms
+```
+
+It reads the CRC32s the MRA asks for and resolves them the way MiSTer does —
+by CRC first, filename second — so it tells a genuinely wrong ROM apart from
+one that merely sits under a different name. On the reference `raiden2.zip`
+it reports 11 of 13 parts matching exactly and the two background ROMs
+matching by CRC under transposed u-numbers, which is correct and loads.
 
 ## Controls
 
@@ -159,6 +231,32 @@ anyone watching a monitor.
 
 It is **off by default**; turn it on from the MiSTer menu under **Self test**,
 which also offers two sprite-only display modes used for debugging graphics.
+
+**Give it a minute before believing a FAIL.** Most checks settle within 8
+frames, but two do not, and a page read too early is the commonest way to
+misread this test:
+
+- `CPU BOOT` has a 1200-frame (~21 s) deadline, because the event it waits
+  for happens once, at frame 836 on Raiden DX.
+- `OKI ROM FETCH` wants 32 sample-ROM reads out of SDRAM. The OKI cache
+  absorbs most of them, so on Raiden II the count only crosses 32 about a
+  minute into attract mode. It read `FAIL` at 35 s and `PASS` at 80 s on the
+  same build and the same load.
+
+A check that has passed stays passed, so the honest reading is the page after
+it has been up for a minute or two, not the one that appears first.
+
+**What `SDRAM VERIFY` does and does not cover.** It checksums every word as it
+is downloaded, then reads the whole image back and compares — so the data at
+rest is proven good across all 14 MB. But it reads it back through only two of
+the four SDRAM channels: ch1 (tiles) and ch3 (CPU). The sprite path (ch2) and
+the OKI sample path (ch4) are never data-verified — `SPRITE FETCH CH2` and
+`OKI ROM FETCH` only count that fetches happened, and `SPRITE DECRYPT`
+checksums the *inbound download stream*, not anything read back from SDRAM.
+
+So a fault confined to the ch2 or ch4 return path would pass all 22 checks.
+For ch4 that would mean wrong or noisy sound effects over a fully green page,
+with nothing in the core to catch it.
 
 This exists because a black screen tells you nothing about *why* it is black.
 The self test has found several real faults that simulation missed.
