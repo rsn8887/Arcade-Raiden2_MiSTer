@@ -34,9 +34,16 @@ import sys
 import zipfile
 import xml.etree.ElementTree as ET
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
 RELEASES = os.path.join(REPO, "releases")
+
+# Normally releases/md5sums.txt in a checkout. But this script is also meant to
+# be dropped onto a MiSTer on its own, next to a downloaded manifest, so fall
+# back to whatever sits beside it.
 MANIFEST = os.path.join(RELEASES, "md5sums.txt")
+if not os.path.exists(MANIFEST) and os.path.exists(os.path.join(HERE, "md5sums.txt")):
+    MANIFEST = os.path.join(HERE, "md5sums.txt")
 
 OK, BAD, WARN = "  ok  ", " FAIL ", " warn "
 
@@ -234,6 +241,9 @@ def main():
                          "one in releases/ -- on a MiSTer that is "
                          "/media/fat/_Arcade/cores. This is the copy that has to "
                          "be good, so check it if the core will not start")
+    ap.add_argument("--mra", metavar="DIR",
+                    help="where the .mra files are (default: releases/; "
+                         "on a MiSTer that is /media/fat/_Arcade)")
     ap.add_argument("--update", action="store_true",
                     help="rewrite releases/md5sums.txt from the current bitstreams")
     args = ap.parse_args()
@@ -245,10 +255,15 @@ def main():
 
     check_bitstreams(rep, args.install or RELEASES)
 
-    mras = sorted(os.path.join(RELEASES, n) for n in os.listdir(RELEASES)
-                  if n.lower().endswith(".mra"))
+    mra_dir = args.mra or RELEASES
+    if not os.path.isdir(mra_dir):
+        rep.line(BAD, f"{mra_dir}: no such directory")
+        mras = []
+    else:
+        mras = sorted(os.path.join(mra_dir, n) for n in os.listdir(mra_dir)
+                      if n.lower().endswith(".mra") and "raiden" in n.lower())
     if not mras:
-        rep.line(BAD, "no .mra found in releases/")
+        rep.line(BAD, f"no Raiden .mra found in {mra_dir}")
     for m in mras:
         check_mra(rep, m, args.roms)
 

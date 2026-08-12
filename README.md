@@ -124,18 +124,32 @@ design: MiSTer logs the failure only to its console and then restarts
 itself, and that restart is what drops you back at the menu. Check the file
 itself rather than its name:
 
+**On the MiSTer itself** — this is the one to run if the core will not start,
+because it checks the copy on the SD card rather than the copy you downloaded.
+SSH in (default login `root`, password `1`) and paste:
+
 ```
-tools/check_files.py                    # check what you downloaded
-tools/check_files.py --install /media/fat/_Arcade/cores \
-                     --roms    /media/fat/games/mame    # check what is installed
+cd /tmp
+wget https://raw.githubusercontent.com/spacestate1/Arcade-Raiden2_MiSTer/main/tools/check_files.py
+wget https://raw.githubusercontent.com/spacestate1/Arcade-Raiden2_MiSTer/main/releases/md5sums.txt
+python3 check_files.py --install /media/fat/_Arcade/cores \
+                       --mra     /media/fat/_Arcade \
+                       --roms    /media/fat/games/mame
 ```
 
-The script needs nothing but Python 3 and the files themselves — no network,
-no ssh, no MiSTer. Run it on the machine you downloaded to, or copy `tools/`
-and `releases/` onto the SD card and run it on the MiSTer itself (which ships
-Python 3.9). **If the core will not start, check the installed copy**, not the
-download: `--install` points at the `.rbf` that actually has to be good, and a
-file can survive the download and still be damaged by the copy to SD.
+Nothing to install: MiSTer already has Python 3 and `wget`. It prints a line
+per check and ends with either `All checks passed.` or `FAILED`.
+
+**On the machine you downloaded to**, from a checkout:
+
+```
+tools/check_files.py --roms /path/to/your/mame/roms
+```
+
+The script needs nothing but Python 3 and the files — no ssh, and no network
+beyond the two `wget`s above. A file can survive the download and still be
+damaged by the copy to SD, which is why `--install` exists: it points at the
+`.rbf` that actually has to be good.
 
 The expected hashes live in `releases/md5sums.txt`, so plain
 `md5sum -c md5sums.txt` from inside `releases/` works too if you would rather
