@@ -72,3 +72,6 @@ docs/
 
 # Build logs from ad-hoc compiles (compile.log is Quartus' own, above)
 compile_*.log
+
+# Python bytecode from tools/
+__pycache__/

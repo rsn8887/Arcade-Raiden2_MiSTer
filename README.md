@@ -98,6 +98,29 @@ Copy the files across so your SD card ends up like this:
 Then pick **Raiden II** or **Raiden DX** from the Arcade menu. Both MRAs use
 the same core file, so you only need the one `.rbf`.
 
+**Get the three files with these commands, not from your browser.** SSH into
+the MiSTer (default login `root`, password `1`) and paste:
+
+```
+R=https://raw.githubusercontent.com/spacestate1/Arcade-Raiden2_MiSTer/main/releases
+mkdir -p /media/fat/_Arcade/cores
+cd /media/fat/_Arcade
+wget -O 'Raiden II.mra'          "$R/Raiden%20II.mra"
+wget -O 'Raiden DX.mra'          "$R/Raiden%20DX.mra"
+wget -O cores/Raiden2_20260811.rbf "$R/Raiden2_20260811.rbf"
+```
+
+The `.rbf` should come out at just over 4 MB and the MRAs at about 6.7 kB.
+
+**Do not save the files from GitHub's file view.** Opening
+`github.com/…/blob/…/Raiden2_20260811.rbf` and saving the page gives you 200 kB
+of HTML wearing the right filename, and all three files fail in ways that point
+somewhere else: the FPGA rejects the HTML `.rbf` silently, so it looks like a
+missing core, and the HTML MRAs fail to parse. If you download in a browser,
+use the **Download** button on the file page (or a
+`raw.githubusercontent.com` link), then copy the files over.
+`tools/check_files.py` below names this case outright.
+
 **The core filename does not have to be exact, and renaming is never
 necessary.** Both MRAs ask for `<rbf>Raiden2</rbf>`, and MiSTer's lookup
 (`get_rbf` in `support/arcade/mra_loader.cpp`) accepts any file in
@@ -131,14 +154,40 @@ SSH in (default login `root`, password `1`) and paste:
 ```
 cd /tmp
 wget https://raw.githubusercontent.com/spacestate1/Arcade-Raiden2_MiSTer/main/tools/check_files.py
-wget https://raw.githubusercontent.com/spacestate1/Arcade-Raiden2_MiSTer/main/releases/md5sums.txt
-python3 check_files.py --install /media/fat/_Arcade/cores \
-                       --mra     /media/fat/_Arcade \
-                       --roms    /media/fat/games/mame
+python3 check_files.py
 ```
 
-Nothing to install: MiSTer already has Python 3 and `wget`. It prints a line
-per check and ends with either `All checks passed.` or `FAILED`.
+Nothing to install: MiSTer already has Python 3 and `wget`. On hardware it
+finds `/media/fat/_Arcade/cores`, `/media/fat/_Arcade` and
+`/media/fat/games/mame` by itself; `--install`, `--mra` and `--roms` are only
+needed for a non-standard layout. It prints a line per check and ends with
+either `All checks passed.` or `FAILED`. Only `.mra` files asking for
+`<rbf>Raiden2</rbf>` are checked, so other Raiden cores installed alongside are
+left alone.
+
+It says what each file **is**, not just whether its hash matches — an HTML
+page, a zip, a Git LFS stub, an empty file and a real-but-wrong-version
+bitstream all read differently, and the wrong *type* is the common case:
+
+```
+[ FAIL ] Raiden2_20260811.rbf: 175053 bytes -- this is an HTML page, not an FPGA bitstream
+[ FAIL ]                       (you saved GitHub's file view instead of the file itself)
+[ FAIL ]                       the FPGA rejects it without a message, which looks exactly
+[ FAIL ]                       like a missing core
+```
+
+Any run that fails ends with the exact `wget` commands to put the install
+back, aimed at the directories it just checked. Or have it do the work:
+
+```
+python3 check_files.py --repair
+```
+
+`--repair` re-downloads the bitstream and both MRAs, **verifies each one
+before installing it**, and then re-runs every check. A download that arrives
+damaged, or does not arrive at all, leaves the existing file untouched — so
+running it on a healthy install cannot break anything. It cannot fetch
+`raiden2.zip` / `raidendx.zip`; those are your own MAME sets.
 
 **On the machine you downloaded to**, from a checkout:
 
@@ -146,16 +195,16 @@ per check and ends with either `All checks passed.` or `FAILED`.
 tools/check_files.py --roms /path/to/your/mame/roms
 ```
 
-The script needs nothing but Python 3 and the files — no ssh, and no network
-beyond the two `wget`s above. A file can survive the download and still be
-damaged by the copy to SD, which is why `--install` exists: it points at the
-`.rbf` that actually has to be good.
+The script needs nothing but Python 3 — no ssh, and no ROMs of its own. A file
+can survive the download and still be damaged by the copy to SD, which is why
+it checks the *installed* copy by default rather than the one in `releases/`.
 
-The expected hashes live in `releases/md5sums.txt`, so plain
+The expected hashes live in `releases/md5sums.txt`. In a checkout it reads that
+file; run on its own it fetches it, so the hashes are always the current
+release's rather than whatever was current when the script was written. With no
+network it still reports what each file is, just not which release. Plain
 `md5sum -c md5sums.txt` from inside `releases/` works too if you would rather
-not run the script. A short or differently-hashed file means the download went
-wrong: take the raw binary from `releases/`, not a page saved from GitHub's
-file viewer.
+not run the script at all.
 
 An earlier version of this README hard-coded the size and md5 here, and they
 went stale the moment the bitstream was rebuilt — so it told people with a
